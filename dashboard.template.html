@@ -1,5 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <title>AfaScan — andamento</title>
 <style>
 :root { color-scheme: light dark; --bg: light-dark(#f6f7f9,#101216); --fg: light-dark(#17202a,#f3f5f7); --muted: light-dark(#5d6875,#aab4bf); --card: light-dark(#fff,#191d23); --line: light-dark(#d8dde3,#323944); --accent: #ed2e61; --accent-soft: light-dark(#fde7ee,#4d1d2e); }
@@ -30,7 +31,7 @@ th, td { text-align:left; padding: 9px 8px; border-bottom: 1px solid var(--line)
 th { color: var(--muted); font-size: 12px; font-weight: 500; }
 td { font-variant-numeric: tabular-nums; }
 .badge { color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 999px; font-size: 12px; }
-details > summary { cursor: pointer; font-weight: 500; }
+.details-title { margin: 0; font-size: 20px; font-weight: 600; }
 .details-content { margin-top: 16px; }
 .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .detail-block { min-width: 0; }
@@ -42,6 +43,10 @@ details > summary { cursor: pointer; font-weight: 500; }
 .detail-deltas { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
 .detail-delta { color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 5px 9px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .detail-delta.good { color: #198754; }
+.row-value { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; text-align: right; }
+.row-delta { color: var(--muted); font-size: 11px; font-weight: 400; }
+.row-delta.good { color: #198754; }
+.row-delta.bad { color: var(--accent); }
 @media (max-width: 760px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } main { width: min(100% - 20px, 1120px); margin-top: 18px; } }
 @media (max-width: 560px) { .detail-grid { grid-template-columns: 1fr; } }
 </style>
@@ -63,15 +68,15 @@ details > summary { cursor: pointer; font-weight: 500; }
     </tr></thead><tbody id="rows"></tbody></table></div>
   </section>
   <section class="panel">
-    <details id="details-panel">
-      <summary>Dettagli segmentali e del referto</summary>
+    <div id="details-panel">
+      <h2 class="details-title">Dettagli segmentali e del referto</h2>
       <div class="toolbar details-content">
         <span class="detail-note" id="details-date-label"></span>
         <label>Pesata <select id="detail-date"></select></label>
       </div>
       <div class="detail-deltas" id="detail-deltas" aria-live="polite"></div>
       <div class="detail-grid" id="details-content"></div>
-    </details>
+    </div>
   </section>
 </main>
 <script>
@@ -117,12 +122,25 @@ const detailDate = document.getElementById('detail-date');
 records.slice().reverse().forEach(r => { const option = document.createElement('option'); option.value = r.date; option.textContent = r.date; detailDate.appendChild(option); });
 detailDate.value = latest?.date ?? '';
 detailDate.addEventListener('change', renderDetails);
-function segmentTable(title, values) {
-  const rows = values ? Object.entries(segmentLabels).map(([key,label]) => `<tr><th>${label}</th><td>${fmt(values[key], 2)} kg</td></tr>`).join('') : '<tr><td colspan="2">Non disponibile</td></tr>';
+function segmentTable(title, values, baselineValues, reductionIsGood) {
+  const rows = values ? Object.entries(segmentLabels).map(([key,label]) => {
+    const current = values[key];
+    const baseline = baselineValues?.[key];
+    const delta = current != null && baseline != null ? current - baseline : null;
+    const status = delta == null || delta === 0 ? '' : (reductionIsGood ? (delta < 0 ? 'good' : 'bad') : (delta > 0 ? 'good' : 'bad'));
+    const comparison = delta == null ? '' : `<span class="row-delta ${status}">${signed(delta, 2)} kg dal primo referto</span>`;
+    return `<tr><th>${label}</th><td><span class="row-value"><span>${fmt(current, 2)} kg</span>${comparison}</span></td></tr>`;
+  }).join('') : '<tr><td colspan="2">Non disponibile</td></tr>';
   return `<div class="detail-block"><h3>${title}</h3><table class="detail-table"><tbody>${rows}</tbody></table></div>`;
 }
 function detailTable(title, rows) {
-  return `<div class="detail-block"><h3>${title}</h3><table class="detail-table"><tbody>${rows.map(([label,value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join('')}</tbody></table></div>`;
+  const renderedRows = rows.map(({label, value, current, baseline, unit = '', digits = 1, increaseIsGood = null}) => {
+    const delta = current != null && baseline != null ? current - baseline : null;
+    const status = delta == null || delta === 0 || increaseIsGood == null ? '' : (increaseIsGood ? (delta > 0 ? 'good' : 'bad') : (delta < 0 ? 'good' : 'bad'));
+    const comparison = delta == null ? '' : `<span class="row-delta ${status}">${signed(delta, digits)} ${unit} dal primo referto</span>`;
+    return `<tr><th>${label}</th><td><span class="row-value"><span>${value}</span>${comparison}</span></td></tr>`;
+  }).join('');
+  return `<div class="detail-block"><h3>${title}</h3><table class="detail-table"><tbody>${renderedRows}</tbody></table></div>`;
 }
 function signed(value, digits=1) {
   if (value == null) return '—';
@@ -145,20 +163,20 @@ function renderDetails() {
   document.getElementById('details-date-label').textContent = `Valori riportati nel referto del ${record.date}`;
   renderDeltas(record);
   document.getElementById('details-content').innerHTML = [
-    segmentTable('Massa grassa segmentale', record.segment_fat_kg),
-    segmentTable('Massa magra segmentale', record.segment_lean_kg),
+    segmentTable('Massa grassa segmentale', record.segment_fat_kg, first?.segment_fat_kg, true),
+    segmentTable('Massa magra segmentale', record.segment_lean_kg, first?.segment_lean_kg, false),
     detailTable('Composizione', [
-      ['Massa muscolare totale', `${fmt(record.muscle_mass_kg)} kg`],
-      ['Massa ossea', `${fmt(record.bone_mass_kg)} kg`],
-      ['Massa grassa', `${fmt(record.body_fat_mass_kg)} kg`],
-      ['Peso obiettivo', `${fmt(record.target_weight_kg)} kg`]
+      { label: 'Massa muscolare totale', value: `${fmt(record.muscle_mass_kg)} kg`, current: record.muscle_mass_kg, baseline: first?.muscle_mass_kg, unit: 'kg', increaseIsGood: true },
+      { label: 'Massa ossea', value: `${fmt(record.bone_mass_kg)} kg`, current: record.bone_mass_kg, baseline: first?.bone_mass_kg, unit: 'kg' },
+      { label: 'Massa grassa', value: `${fmt(record.body_fat_mass_kg)} kg`, current: record.body_fat_mass_kg, baseline: first?.body_fat_mass_kg, unit: 'kg', increaseIsGood: false },
+      { label: 'Peso obiettivo', value: `${fmt(record.target_weight_kg)} kg`, current: record.target_weight_kg, baseline: first?.target_weight_kg, unit: 'kg' }
     ]),
     detailTable('Parametri aggiuntivi', [
-      ['Metabolismo basale', `${record.basal_metabolic_rate_kcal ?? '—'} kcal`],
-      ['Grasso viscerale', record.visceral_fat_level ?? '—'],
-      ['Proteine', `${fmt(record.protein_percent)}%`],
-      ['Acqua', `${fmt(record.water_percent)}%`],
-      ['Score AfaScan', `${record.score ?? '—'} / 100`]
+      { label: 'Metabolismo basale', value: `${record.basal_metabolic_rate_kcal ?? '—'} kcal`, current: record.basal_metabolic_rate_kcal, baseline: first?.basal_metabolic_rate_kcal, unit: 'kcal', digits: 0 },
+      { label: 'Grasso viscerale', value: record.visceral_fat_level ?? '—', current: record.visceral_fat_level, baseline: first?.visceral_fat_level, unit: 'livelli', digits: 0, increaseIsGood: false },
+      { label: 'Proteine', value: `${fmt(record.protein_percent)}%`, current: record.protein_percent, baseline: first?.protein_percent, unit: 'pp' },
+      { label: 'Acqua', value: `${fmt(record.water_percent)}%`, current: record.water_percent, baseline: first?.water_percent, unit: 'pp' },
+      { label: 'Score AfaScan', value: `${record.score ?? '—'} / 100`, current: record.score, baseline: first?.score, unit: 'punti', digits: 0, increaseIsGood: true }
     ])
   ].join('');
 }
