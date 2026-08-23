@@ -14,7 +14,7 @@ Il progetto nasce da un’esigenza personale, ma il parser è pensato per essere
 - conserva il testo OCR originale per il controllo manuale;
 - normalizza i valori in JSON e CSV;
 - genera una dashboard HTML offline con grafici interattivi e tabella storica;
-- include una sezione espandibile per i dettagli del referto selezionato, comprese massa grassa e massa magra dei singoli segmenti;
+- include una sezione sempre visibile per i dettagli del referto selezionato, comprese massa grassa e massa magra dei singoli segmenti;
 - permette correzioni esplicite tramite un file di override, senza perdere l’estrazione originale;
 - mantiene separati dispositivo e tipo di report, così da poter estendere il progetto a eventuali test funzionali o posturali.
 
@@ -69,9 +69,9 @@ Dalla directory del progetto:
 uv run parse_scans.py
 ```
 
-Lo script cerca i file `screenshots/Screenshot_*.png`, esegue l’OCR e aggiorna:
+Lo script cerca i file `screenshots/Screenshot_*.png`, esegue l’OCR solo sugli screenshot non ancora presenti nell’archivio e aggiorna:
 
-- `data/measurements.json` — archivio canonico;
+- `data/measurements.json` — archivio normalizzato generato;
 - `data/measurements.csv` — esportazione tabellare;
 - `data/ocr/*.txt` — testo OCR grezzo;
 - `dashboard.html` — dashboard generata.
@@ -83,6 +83,17 @@ Se l’OCR sbaglia, aggiungere i valori corretti in `data/overrides.json`, usand
 ```bash
 uv run parse_scans.py --no-ocr
 ```
+
+Per rielaborare intenzionalmente tutti gli screenshot già importati:
+
+```bash
+uv run parse_scans.py --force-ocr
+```
+
+Il parser valida struttura, tipi, intervalli plausibili e identificatori prima di aggiornare gli output. In caso di errore indica il file e il campo problematico e non scrive gli output della nuova esecuzione.
+
+`data/measurements.json` è un output generato: non modificarlo direttamente. Per correggere un valore usare `data/overrides.json`; alla rigenerazione il parser ricostruisce la base dal testo in `data/ocr/` e riapplica le correzioni.
+Le chiavi di `overrides.json` devono corrispondere a uno screenshot presente o a un referto già archiviato; un nome file inesistente viene segnalato come errore.
 
 ## Come vedere la dashboard
 
@@ -122,7 +133,7 @@ dashboard.template.html   # sorgente della dashboard
 dashboard.html            # dashboard generata (locale)
 screenshots/              # screenshot originali (locale)
 data/
-  measurements.json       # dati normalizzati (locale)
+  measurements.json       # dati normalizzati generati (locale)
   measurements.csv        # esportazione (locale)
   overrides.json          # correzioni OCR (locale)
   ocr/                    # OCR grezzo (locale)
