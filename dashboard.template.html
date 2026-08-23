@@ -39,6 +39,9 @@ details > summary { cursor: pointer; font-weight: 500; }
 .detail-table th, .detail-table td { padding: 7px 8px; }
 .detail-table th { width: 65%; }
 .detail-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.detail-deltas { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.detail-delta { color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 5px 9px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.detail-delta.good { color: #198754; }
 @media (max-width: 760px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } main { width: min(100% - 20px, 1120px); margin-top: 18px; } }
 @media (max-width: 560px) { .detail-grid { grid-template-columns: 1fr; } }
 </style>
@@ -66,6 +69,7 @@ details > summary { cursor: pointer; font-weight: 500; }
         <span class="detail-note" id="details-date-label"></span>
         <label>Pesata <select id="detail-date"></select></label>
       </div>
+      <div class="detail-deltas" id="detail-deltas" aria-live="polite"></div>
       <div class="detail-grid" id="details-content"></div>
     </details>
   </section>
@@ -120,10 +124,26 @@ function segmentTable(title, values) {
 function detailTable(title, rows) {
   return `<div class="detail-block"><h3>${title}</h3><table class="detail-table"><tbody>${rows.map(([label,value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join('')}</tbody></table></div>`;
 }
+function signed(value, digits=1) {
+  if (value == null) return '—';
+  return `${value > 0 ? '+' : ''}${fmt(value, digits)}`;
+}
+function renderDeltas(record) {
+  const deltas = [
+    ['Peso', record.weight_kg - first.weight_kg, 'kg', true],
+    ['Grasso corporeo', record.body_fat_percent - first.body_fat_percent, 'pp', true],
+    ['Massa muscolare', record.skeletal_muscle_mass_kg - first.skeletal_muscle_mass_kg, 'kg', false]
+  ];
+  document.getElementById('detail-deltas').innerHTML = deltas.map(([label, value, unit, favorableReduction]) => {
+    const good = favorableReduction ? value <= 0 : value >= 0;
+    return `<span class="detail-delta ${good ? 'good' : ''}">${label} ${signed(value)} ${unit} dal primo referto</span>`;
+  }).join('');
+}
 function renderDetails() {
   const record = records.find(r => r.date === detailDate.value) ?? latest;
   if (!record) return;
   document.getElementById('details-date-label').textContent = `Valori riportati nel referto del ${record.date}`;
+  renderDeltas(record);
   document.getElementById('details-content').innerHTML = [
     segmentTable('Massa grassa segmentale', record.segment_fat_kg),
     segmentTable('Massa magra segmentale', record.segment_lean_kg),
