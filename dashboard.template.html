@@ -11,6 +11,8 @@ h1 { margin: 0 0 4px; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.02em;
 .sub { color: var(--muted); margin: 0 0 24px; }
 .grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 18px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.empty-state { grid-column: 1 / -1; }
+.empty-table { color: var(--muted); text-align: center; }
 .metric-label { color: var(--muted); font-size: 13px; }
 .metric { font-size: 26px; font-weight: 650; margin-top: 3px; }
 .delta { color: var(--muted); font-size: 12px; margin-top: 3px; }
@@ -79,8 +81,9 @@ td { font-variant-numeric: tabular-nums; }
     </div>
   </section>
 </main>
+<script type="application/json" id="measurements-data">__MEASUREMENTS_JSON__</script>
 <script>
-const records = __MEASUREMENTS_JSON__.filter(r => r.date).sort((a,b) => a.date.localeCompare(b.date));
+const records = JSON.parse(document.getElementById('measurements-data').textContent).filter(r => r.date).sort((a,b) => a.date.localeCompare(b.date));
 const fields = {
   weight_kg: ['Peso', 'kg'],
   body_fat_percent: ['Grasso corporeo', '%'],
@@ -91,42 +94,62 @@ const fields = {
   visceral_fat_level: ['Grasso viscerale', ''],
   water_percent: ['Acqua', '%']
 };
-const fmt = (n, digits=1) => n == null ? '—' : Number(n).toLocaleString('it-IT', {maximumFractionDigits:digits, minimumFractionDigits:digits});
+const numericValue = value => {
+  if (value == null || typeof value === 'boolean' || (typeof value === 'string' && value.trim() === '')) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+const fmt = (n, digits=1) => {
+  const value = numericValue(n);
+  if (value == null) return '—';
+  return Number.isFinite(value) ? value.toLocaleString('it-IT', {maximumFractionDigits:digits, minimumFractionDigits:digits}) : '—';
+};
+const difference = (current, baseline) => {
+  const currentNumber = numericValue(current), baselineNumber = numericValue(baseline);
+  return currentNumber != null && baselineNumber != null ? currentNumber - baselineNumber : null;
+};
+function initDashboard() {
 const latest = records.at(-1), first = records[0];
 document.getElementById('subtitle').textContent = records.length ? `${records.length} referti · dal ${first.date} al ${latest.date}` : 'Nessun referto importato';
 document.getElementById('count').textContent = `${records.length} referti`;
 const summaryFields = ['weight_kg','body_fat_percent','skeletal_muscle_mass_kg','body_fat_mass_kg'];
 document.getElementById('summary').innerHTML = summaryFields.map(key => {
-  const [label, unit] = fields[key]; const delta = latest[key] != null && first[key] != null ? latest[key]-first[key] : null;
-  const sign = delta > 0 ? '+' : ''; const good = key === 'skeletal_muscle_mass_kg' ? delta >= 0 : key.includes('fat') || key === 'weight_kg' ? delta <= 0 : false;
+  const [label, unit] = fields[key]; const delta = difference(latest[key], first[key]);
+  const sign = delta > 0 ? '+' : ''; const good = delta != null && (key === 'skeletal_muscle_mass_kg' ? delta >= 0 : key.includes('fat') || key === 'weight_kg' ? delta <= 0 : false);
   return `<div class="card"><div class="metric-label">${label}</div><div class="metric">${fmt(latest[key])} ${unit}</div><div class="delta ${good ? 'good' : ''}">${delta == null ? '' : `${sign}${fmt(delta)} ${unit} dal primo referto`}</div></div>`;
 }).join('');
 const select = document.getElementById('metric');
 Object.entries(fields).forEach(([key,[label,unit]]) => { const opt = document.createElement('option'); opt.value=key; opt.textContent=`${label}${unit ? ` (${unit})` : ''}`; select.appendChild(opt); });
 select.value = 'weight_kg'; select.addEventListener('change', () => draw(select.value));
 function draw(key) {
-  const svg = document.getElementById('chart'); const W=900,H=310,L=58,R=20,T=18,B=42; const vals=records.map(r=>Number(r[key])).filter(Number.isFinite);
+  const svg = document.getElementById('chart'); const W=900,H=310,L=58,R=20,T=18,B=42; const vals=records.map(r=>numericValue(r[key])).filter(value => value != null);
   if (!vals.length) { svg.innerHTML=''; return; }
   const min=Math.min(...vals), max=Math.max(...vals), pad=(max-min || 1)*.15; const lo=min-pad, hi=max+pad;
   const x=i => L + (records.length === 1 ? (W-L-R)/2 : i*(W-L-R)/(records.length-1)); const y=v => T + (hi-v)*(H-T-B)/(hi-lo);
-  const points=records.map((r,i)=>Number.isFinite(Number(r[key])) ? `${x(i)},${y(Number(r[key]))}` : '').filter(Boolean).join(' ');
+  const points=records.map((r,i)=>{ const value=numericValue(r[key]); return value == null ? '' : `${x(i)},${y(value)}`; }).filter(Boolean).join(' ');
   const ticks=4; let html=''; for(let i=0;i<=ticks;i++){ const v=lo+(hi-lo)*i/ticks, yy=y(v); html += `<line class="gridline" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><text class="chart-text" x="${L-8}" y="${yy+4}" text-anchor="end">${fmt(v)}</text>`; }
   html += `<line class="axis" x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}"/><polyline class="series" points="${points}"/>`;
-  records.forEach((r,i)=>{ if(Number.isFinite(Number(r[key]))) html += `<circle class="dot" cx="${x(i)}" cy="${y(Number(r[key]))}" r="5"><title>${r.date}: ${fmt(r[key])} ${fields[key][1]}</title></circle>`; html += `<text class="chart-text" x="${x(i)}" y="${H-16}" text-anchor="middle">${r.date.slice(5)}</text>`; });
+  records.forEach((r,i)=>{ const value=numericValue(r[key]); if(value != null) html += `<circle class="dot" cx="${x(i)}" cy="${y(value)}" r="5"><title>${r.date}: ${fmt(value)} ${fields[key][1]}</title></circle>`; html += `<text class="chart-text" x="${x(i)}" y="${H-16}" text-anchor="middle">${r.date.slice(5)}</text>`; });
   svg.innerHTML=html; document.getElementById('chart-title').textContent = fields[key][0];
 }
 draw('weight_kg');
 document.getElementById('rows').innerHTML = records.slice().reverse().map(r => `<tr><td>${r.date}</td><td>${fmt(r.weight_kg)} kg</td><td>${fmt(r.skeletal_muscle_mass_kg)} kg</td><td>${fmt(r.body_fat_percent)}%</td><td>${fmt(r.body_fat_mass_kg)} kg</td><td>${fmt(r.bmi)}</td><td>${r.basal_metabolic_rate_kcal ?? '—'} kcal</td><td>${r.visceral_fat_level ?? '—'}</td><td>${fmt(r.water_percent)}%</td><td>${r.score ?? '—'}/100</td></tr>`).join('');
 const segmentLabels = { right_arm: 'Braccio destro', left_arm: 'Braccio sinistro', trunk: 'Tronco', right_leg: 'Gamba destra', left_leg: 'Gamba sinistra' };
 const detailDate = document.getElementById('detail-date');
-records.slice().reverse().forEach(r => { const option = document.createElement('option'); option.value = r.date; option.textContent = r.date; detailDate.appendChild(option); });
-detailDate.value = latest?.date ?? '';
+const recordKey = (record, index) => record.source_file || `${record.date}|${record.report_id || index}`;
+records.map((record, index) => ({record, index})).reverse().forEach(({record, index}) => {
+  const option = document.createElement('option');
+  option.value = recordKey(record, index);
+  option.textContent = `${record.date} · ${record.source_file || record.report_id || 'referto'}`;
+  detailDate.appendChild(option);
+});
+detailDate.value = recordKey(latest, records.length - 1);
 detailDate.addEventListener('change', renderDetails);
 function segmentTable(title, values, baselineValues, reductionIsGood) {
   const rows = values ? Object.entries(segmentLabels).map(([key,label]) => {
     const current = values[key];
     const baseline = baselineValues?.[key];
-    const delta = current != null && baseline != null ? current - baseline : null;
+    const delta = difference(current, baseline);
     const status = delta == null || delta === 0 ? '' : (reductionIsGood ? (delta < 0 ? 'good' : 'bad') : (delta > 0 ? 'good' : 'bad'));
     const comparison = delta == null ? '' : `<span class="row-delta ${status}">${signed(delta, 2)} kg dal primo referto</span>`;
     return `<tr><th>${label}</th><td><span class="row-value"><span>${fmt(current, 2)} kg</span>${comparison}</span></td></tr>`;
@@ -135,7 +158,7 @@ function segmentTable(title, values, baselineValues, reductionIsGood) {
 }
 function detailTable(title, rows) {
   const renderedRows = rows.map(({label, value, current, baseline, unit = '', digits = 1, increaseIsGood = null}) => {
-    const delta = current != null && baseline != null ? current - baseline : null;
+    const delta = difference(current, baseline);
     const status = delta == null || delta === 0 || increaseIsGood == null ? '' : (increaseIsGood ? (delta > 0 ? 'good' : 'bad') : (delta < 0 ? 'good' : 'bad'));
     const comparison = delta == null ? '' : `<span class="row-delta ${status}">${signed(delta, digits)} ${unit} dal primo referto</span>`;
     return `<tr><th>${label}</th><td><span class="row-value"><span>${value}</span>${comparison}</span></td></tr>`;
@@ -148,17 +171,17 @@ function signed(value, digits=1) {
 }
 function renderDeltas(record) {
   const deltas = [
-    ['Peso', record.weight_kg - first.weight_kg, 'kg', true],
-    ['Grasso corporeo', record.body_fat_percent - first.body_fat_percent, 'pp', true],
-    ['Massa muscolare', record.skeletal_muscle_mass_kg - first.skeletal_muscle_mass_kg, 'kg', false]
+    ['Peso', difference(record.weight_kg, first.weight_kg), 'kg', true],
+    ['Grasso corporeo', difference(record.body_fat_percent, first.body_fat_percent), 'pp', true],
+    ['Massa muscolare', difference(record.skeletal_muscle_mass_kg, first.skeletal_muscle_mass_kg), 'kg', false]
   ];
   document.getElementById('detail-deltas').innerHTML = deltas.map(([label, value, unit, favorableReduction]) => {
-    const good = favorableReduction ? value <= 0 : value >= 0;
+    const good = value != null && (favorableReduction ? value <= 0 : value >= 0);
     return `<span class="detail-delta ${good ? 'good' : ''}">${label} ${signed(value)} ${unit} dal primo referto</span>`;
   }).join('');
 }
 function renderDetails() {
-  const record = records.find(r => r.date === detailDate.value) ?? latest;
+  const record = records.find((r, index) => recordKey(r, index) === detailDate.value) ?? latest;
   if (!record) return;
   document.getElementById('details-date-label').textContent = `Valori riportati nel referto del ${record.date}`;
   renderDeltas(record);
@@ -181,4 +204,19 @@ function renderDetails() {
   ].join('');
 }
 renderDetails();
+}
+function renderEmptyDashboard() {
+  document.getElementById('subtitle').textContent = 'Nessun referto importato';
+  document.getElementById('summary').innerHTML = '<div class="card empty-state"><div class="metric-label">Archivio vuoto</div><div class="metric">Nessun referto</div><div class="delta">Aggiungi uno screenshot in <code>screenshots/</code> e rigenera la dashboard.</div></div>';
+  document.getElementById('count').textContent = '0 referti';
+  document.getElementById('metric').disabled = true;
+  document.getElementById('chart').innerHTML = '<text class="chart-text" x="450" y="155" text-anchor="middle">Nessun dato da visualizzare</text>';
+  document.getElementById('rows').innerHTML = '<tr><td colspan="10" class="empty-table">Nessun referto importato.</td></tr>';
+  document.getElementById('detail-date').disabled = true;
+  document.getElementById('details-date-label').textContent = 'Nessun referto importato';
+  document.getElementById('detail-deltas').innerHTML = '';
+  document.getElementById('details-content').innerHTML = '<p class="detail-note">I dettagli saranno disponibili dopo la prima importazione.</p>';
+}
+if (records.length) initDashboard();
+else renderEmptyDashboard();
 </script>

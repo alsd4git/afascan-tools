@@ -2,12 +2,13 @@
 """Import AfaScan screenshots into a small, reviewable data set.
 
 The script deliberately keeps the OCR text next to the extracted values. OCR is
-useful for bootstrapping a new report, but the JSON file remains the canonical
-record and can be corrected without losing the original evidence.
+useful for bootstrapping a new report; measurements.json is a generated output,
+while the OCR text and overrides preserve the original evidence and corrections.
 
 Usage:
-    uv run parse_scans.py                 # OCR new screenshots and rebuild outputs
-    uv run parse_scans.py --no-ocr        # rebuild CSV/dashboard from JSON only
+    uv run parse_scans.py                 # OCR only screenshots not yet in the archive
+    uv run parse_scans.py --force-ocr     # intentionally rerun OCR for every screenshot
+    uv run parse_scans.py --no-ocr        # rebuild CSV/dashboard from JSON and OCR text only
 
 New screenshots can simply be dropped in the input directory. If a value needs
 correction, edit data/overrides.json using the source filename as the key and
@@ -19,10 +20,14 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import io
 import json
+import math
+import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -33,6 +38,25 @@ OVERRIDES_PATH = DATA_DIR / "overrides.json"
 OCR_DIR = DATA_DIR / "ocr"
 CSV_PATH = DATA_DIR / "measurements.csv"
 DASHBOARD_PATH = ROOT / "dashboard.html"
+SEGMENT_NAMES = ("right_arm", "left_arm", "trunk", "right_leg", "left_leg")
+RECORD_FIELDS = {
+    "device", "report_type", "date", "source_file", "report_id", "height_cm", "gender",
+    "weight_kg", "muscle_mass_kg", "bone_mass_kg", "body_fat_mass_kg",
+    "skeletal_muscle_mass_kg", "bmi", "body_fat_percent", "score", "target_weight_kg",
+    "basal_metabolic_rate_kcal", "visceral_fat_level", "protein_percent", "water_percent",
+    "segment_fat_kg", "segment_lean_kg", "ocr_status", "review_required",
+}
+OVERRIDE_FIELDS = RECORD_FIELDS - {"device", "report_type", "source_file", "review_required"}
+NUMERIC_RANGES = {
+    "height_cm": (50, 250), "weight_kg": (20, 400), "muscle_mass_kg": (0, 400),
+    "bone_mass_kg": (0, 100), "body_fat_mass_kg": (0, 200),
+    "skeletal_muscle_mass_kg": (0, 200), "bmi": (5, 100), "body_fat_percent": (0, 100),
+    "score": (0, 100),
+    "target_weight_kg": (20, 400), "basal_metabolic_rate_kcal": (500, 5000),
+    "visceral_fat_level": (0, 50), "protein_percent": (0, 100), "water_percent": (0, 100),
+}
+SEGMENT_RANGES = {"segment_fat_kg": (0, 200), "segment_lean_kg": (0, 300)}
+INTEGER_FIELDS = {"height_cm", "score", "basal_metabolic_rate_kcal", "visceral_fat_level"}
 
 
 def number(value: str | None) -> float | None:
@@ -46,6 +70,113 @@ def number(value: str | None) -> float | None:
 def integer(value: str | None) -> int | None:
     n = number(value)
     return int(n) if n is not None else None
+
+
+def finite_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+
+
+def validate_numeric(
+    value: object, field: str, location: str, bounds: tuple[float, float] | None = None
+) -> None:
+    if value is None:
+        return
+    if not finite_number(value):
+        raise ValueError(f"{location}.{field}: atteso un numero finito, trovato {value!r}")
+    if field in INTEGER_FIELDS and float(value) != int(float(value)):
+        raise ValueError(f"{location}.{field}: atteso un intero, trovato {value!r}")
+    minimum, maximum = bounds if bounds is not None else NUMERIC_RANGES.get(field, (None, None))
+    if minimum is not None and not minimum <= float(value) <= maximum:
+        raise ValueError(
+            f"{location}.{field}: valore fuori intervallo [{minimum}, {maximum}], trovato {value!r}"
+        )
+
+
+def validate_segment(value: object, field: str, location: str) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise ValueError(f"{location}.{field}: atteso un oggetto con i segmenti, trovato {value!r}")
+    unknown = sorted(set(value) - set(SEGMENT_NAMES))
+    if unknown:
+        raise ValueError(f"{location}.{field}: segmenti sconosciuti: {', '.join(unknown)}")
+    bounds = SEGMENT_RANGES[field]
+    for segment, segment_value in value.items():
+        validate_numeric(segment_value, f"{field}.{segment}", location, bounds)
+
+
+def validate_record(record: object, location: str) -> None:
+    if not isinstance(record, dict):
+        raise ValueError(f"{location}: atteso un oggetto, trovato {record!r}")
+    unknown = sorted(set(record) - RECORD_FIELDS)
+    if unknown:
+        raise ValueError(f"{location}: campi sconosciuti: {', '.join(unknown)}")
+    source_file = record.get("source_file")
+    if source_file is not None and (not isinstance(source_file, str) or not source_file.strip()):
+        raise ValueError(f"{location}.source_file: nome file mancante o non valido")
+    if isinstance(source_file, str) and (
+        Path(source_file).name != source_file or "/" in source_file or "\\" in source_file
+    ):
+        raise ValueError(f"{location}.source_file: deve essere un nome file, non un percorso")
+    date = record.get("date")
+    if date is not None:
+        if not isinstance(date, str):
+            raise ValueError(f"{location}.date: attesa una data ISO YYYY-MM-DD, trovato {date!r}")
+        try:
+            dt.date.fromisoformat(date)
+        except ValueError as error:
+            raise ValueError(f"{location}.date: data ISO non valida {date!r}") from error
+    for field in ("device", "report_type", "gender", "report_id", "ocr_status"):
+        value = record.get(field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{location}.{field}: attesa una stringa, trovato {value!r}")
+    if record.get("ocr_status") not in (None, "ocr", "manual"):
+        raise ValueError(f"{location}.ocr_status: valore non valido {record['ocr_status']!r}")
+    if record.get("review_required") is not None and not isinstance(record["review_required"], bool):
+        raise ValueError(f"{location}.review_required: atteso un booleano")
+    for field in NUMERIC_RANGES:
+        validate_numeric(record.get(field), field, location)
+    validate_numeric(record.get("score"), "score", location)
+    validate_segment(record.get("segment_fat_kg"), "segment_fat_kg", location)
+    validate_segment(record.get("segment_lean_kg"), "segment_lean_kg", location)
+
+
+def validate_records(records: object, path: Path) -> None:
+    if not isinstance(records, list):
+        raise ValueError(f"{path}: atteso un array di referti")
+    seen: set[str] = set()
+    for index, record in enumerate(records):
+        location = f"{path}[{index}]"
+        validate_record(record, location)
+        source_file = record.get("source_file")
+        if not source_file:
+            raise ValueError(f"{location}.source_file: campo obbligatorio mancante")
+        if source_file in seen:
+            raise ValueError(f"{path}: source_file duplicato {source_file!r}")
+        seen.add(source_file)
+
+
+def validate_overrides(overrides: object, path: Path) -> None:
+    if not isinstance(overrides, dict):
+        raise ValueError(f"{path}: atteso un oggetto indicizzato per source_file")
+    for source_file, patch in overrides.items():
+        location = f"{path}[{source_file!r}]"
+        if not isinstance(source_file, str) or not source_file.strip():
+            raise ValueError(f"{location}: chiave source_file non valida")
+        if not isinstance(patch, dict):
+            raise ValueError(f"{location}: atteso un oggetto di correzioni")
+        unknown = sorted(set(patch) - OVERRIDE_FIELDS)
+        if unknown:
+            raise ValueError(f"{location}: campi non modificabili o sconosciuti: {', '.join(unknown)}")
+        candidate = {"source_file": source_file, **patch}
+        validate_record(candidate, location)
+
+
+def validate_override_sources(overrides: dict, known_sources: set[str], path: Path) -> None:
+    orphaned = sorted(set(overrides) - known_sources)
+    if orphaned:
+        names = ", ".join(repr(name) for name in orphaned)
+        raise ValueError(f"{path}: override senza referto corrispondente: {names}")
 
 
 def ocr_text(image: Path) -> str:
@@ -154,7 +285,10 @@ def extract_record(image: Path, text: str) -> dict:
 def load_json(path: Path, default):
     if not path.exists():
         return default
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path}: JSON non valido alla riga {error.lineno}, colonna {error.colno}") from error
 
 
 def merge_override(record: dict, overrides: dict) -> dict:
@@ -166,6 +300,18 @@ def merge_override(record: dict, overrides: dict) -> dict:
     return updated
 
 
+def restored_record(record: dict) -> dict:
+    source_file = record["source_file"]
+    ocr_path = OCR_DIR / f"{Path(source_file).stem}.txt"
+    if not ocr_path.exists():
+        return dict(record)
+    return extract_record(Path(source_file), ocr_path.read_text(encoding="utf-8"))
+
+
+def complete_segment(value: object) -> bool:
+    return isinstance(value, dict) and all(finite_number(value.get(name)) for name in SEGMENT_NAMES)
+
+
 def tidy(records: list[dict]) -> list[dict]:
     records.sort(key=lambda row: (row.get("date") or "", row.get("source_file") or ""))
     for row in records:
@@ -174,10 +320,10 @@ def tidy(records: list[dict]) -> list[dict]:
         ]
         if row.get("report_type") == "body_composition":
             required.extend(["segment_fat_kg", "segment_lean_kg"])
-        row["review_required"] = any(
-            row.get(field) is None
-            for field in required
-        )
+        row["review_required"] = any(row.get(field) is None for field in required)
+        if row.get("report_type") == "body_composition":
+            row["review_required"] = row["review_required"] or not complete_segment(row.get("segment_fat_kg"))
+            row["review_required"] = row["review_required"] or not complete_segment(row.get("segment_lean_kg"))
     return records
 
 
@@ -198,43 +344,79 @@ def write_csv(records: list[dict]) -> None:
             return (row.get("segment_lean_kg") or {}).get(field.removeprefix("segment_lean_").removesuffix("_kg"))
         return row.get(field)
 
-    with CSV_PATH.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows({field: value(row, field) for field in fields} for row in records)
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows({field: value(row, field) for field in fields} for row in records)
+    atomic_write_text(CSV_PATH, output.getvalue())
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def write_dashboard(records: list[dict]) -> None:
     data = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
+    data = data.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     template = (ROOT / "dashboard.template.html").read_text(encoding="utf-8")
-    DASHBOARD_PATH.write_text(template.replace("__MEASUREMENTS_JSON__", data), encoding="utf-8")
+    atomic_write_text(DASHBOARD_PATH, template.replace("__MEASUREMENTS_JSON__", data))
+
+
+def import_images(
+    existing: dict[str, dict], overrides: dict, images: list[Path], force_ocr: bool = False
+) -> dict[str, dict]:
+    imported = dict(existing)
+    for image in sorted(images):
+        if image.name in imported and not force_ocr:
+            imported[image.name] = merge_override(imported[image.name], overrides)
+            continue
+        text = ocr_text(image)
+        (OCR_DIR / f"{image.stem}.txt").write_text(text, encoding="utf-8")
+        imported[image.name] = merge_override(extract_record(image, text), overrides)
+    return imported
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-ocr", action="store_true", help="non eseguire OCR; usa solo il JSON già presente")
+    parser.add_argument(
+        "--force-ocr", action="store_true", help="riesegui intenzionalmente l'OCR sui file già importati"
+    )
     args = parser.parse_args()
+    if args.no_ocr and args.force_ocr:
+        parser.error("--no-ocr e --force-ocr sono alternativi")
 
     INPUT_DIR.mkdir(exist_ok=True)
     DATA_DIR.mkdir(exist_ok=True)
     OCR_DIR.mkdir(exist_ok=True)
-    existing = {row.get("source_file"): row for row in load_json(MEASUREMENTS_PATH, [])}
+    raw_records = load_json(MEASUREMENTS_PATH, [])
+    validate_records(raw_records, MEASUREMENTS_PATH)
+    existing = {row["source_file"]: restored_record(row) for row in raw_records}
     overrides = load_json(OVERRIDES_PATH, {})
-
-    if args.no_ocr:
-        existing = {name: merge_override(row, overrides) for name, row in existing.items()}
+    validate_overrides(overrides, OVERRIDES_PATH)
+    images = list(INPUT_DIR.glob("Screenshot_*.png"))
+    validate_override_sources(overrides, set(existing) | {image.name for image in images}, OVERRIDES_PATH)
+    existing = {name: merge_override(row, overrides) for name, row in existing.items()}
 
     if not args.no_ocr:
-        for image in sorted(INPUT_DIR.glob("Screenshot_*.png")):
-            if image.name in existing and existing[image.name].get("ocr_status") == "manual":
-                existing[image.name] = merge_override(existing[image.name], overrides)
-                continue
-            text = ocr_text(image)
-            (OCR_DIR / f"{image.stem}.txt").write_text(text, encoding="utf-8")
-            existing[image.name] = merge_override(extract_record(image, text), overrides)
+        existing = import_images(existing, overrides, images, force_ocr=args.force_ocr)
 
     records = tidy(list(existing.values()))
-    MEASUREMENTS_PATH.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    validate_records(records, MEASUREMENTS_PATH)
+    atomic_write_text(MEASUREMENTS_PATH, json.dumps(records, ensure_ascii=False, indent=2) + "\n")
     write_csv(records)
     write_dashboard(records)
     print(f"Referti: {len(records)} | JSON: {MEASUREMENTS_PATH} | Dashboard: {DASHBOARD_PATH}")
