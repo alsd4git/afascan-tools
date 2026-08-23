@@ -42,3 +42,8 @@ jobs:
 
       - name: Smoke-test dashboard generation without private data
         run: uv run parse_scans.py --no-ocr
+
+      - name: Smoke-test dashboard runtime
+        run: |
+          node tests/dashboard_smoke.mjs dashboard.html empty
+          node tests/dashboard_smoke.mjs dashboard.html sample
