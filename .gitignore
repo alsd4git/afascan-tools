@@ -1,0 +1,16 @@
+# Dati personali: non finiscono nel repository del tool, nemmeno se un domani
+# questo progetto verrà reso pubblico.
+Screenshot_*.png
+screenshots/*.png
+data/ocr/
+data/measurements.json
+data/measurements.csv
+data/overrides.json
+dashboard.html
+
+# File locali/macOS/Python
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
