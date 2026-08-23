@@ -1,6 +1,17 @@
 from pathlib import Path
 
-from parse_scans import extract_record, number, tidy
+import pytest
+
+from parse_scans import (
+    extract_record,
+    import_images,
+    number,
+    tidy,
+    validate_override_sources,
+    validate_overrides,
+    validate_records,
+    write_dashboard,
+)
 
 
 def test_number_accepts_decimal_comma():
@@ -44,3 +55,52 @@ def test_body_composition_without_segment_overrides_requires_review():
     )
 
     assert tidy([record])[0]["review_required"] is True
+
+
+def test_import_images_skips_archived_file_unless_forced(tmp_path, monkeypatch):
+    image = tmp_path / "Screenshot_20260830-101500.png"
+    image.write_bytes(b"placeholder")
+    ocr_dir = tmp_path / "ocr"
+    ocr_dir.mkdir()
+    calls = []
+    monkeypatch.setattr("parse_scans.OCR_DIR", ocr_dir)
+    monkeypatch.setattr("parse_scans.ocr_text", lambda path: calls.append(path) or "Body Composition Analysis")
+    existing = {image.name: {"source_file": image.name, "ocr_status": "ocr"}}
+
+    import_images(existing, {}, [image])
+    assert calls == []
+
+    import_images(existing, {}, [image], force_ocr=True)
+    assert calls == [image]
+    assert (ocr_dir / f"{image.stem}.txt").read_text(encoding="utf-8") == "Body Composition Analysis"
+
+
+def test_validation_rejects_duplicate_sources_and_unknown_overrides(tmp_path):
+    with pytest.raises(ValueError, match="source_file duplicato"):
+        validate_records(
+            [{"source_file": "same.png"}, {"source_file": "same.png"}],
+            tmp_path / "measurements.json",
+        )
+
+    with pytest.raises(ValueError, match="campi non modificabili o sconosciuti"):
+        validate_overrides({"report.png": {"source_file": "other.png"}}, tmp_path / "overrides.json")
+
+    with pytest.raises(ValueError, match="valore fuori intervallo"):
+        validate_records(
+            [{"source_file": "report.png", "segment_fat_kg": {"right_arm": -0.1}}],
+            tmp_path / "measurements.json",
+        )
+
+
+def test_validation_rejects_orphan_override(tmp_path):
+    with pytest.raises(ValueError, match="override senza referto corrispondente"):
+        validate_override_sources({"missing.png": {}}, {"known.png"}, tmp_path / "overrides.json")
+
+
+def test_dashboard_json_escapes_script_terminators(tmp_path, monkeypatch):
+    dashboard_path = tmp_path / "dashboard.html"
+    monkeypatch.setattr("parse_scans.DASHBOARD_PATH", dashboard_path)
+    write_dashboard([{"source_file": "</script><script>alert(1)</script>"}])
+    content = dashboard_path.read_text(encoding="utf-8")
+    assert "</script><script>alert(1)" not in content
+    assert r"\u003c/script\u003e" in content
