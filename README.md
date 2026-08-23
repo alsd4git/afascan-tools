@@ -12,6 +12,7 @@ Il progetto nasce da un’esigenza personale, ma il parser è pensato per essere
 - conserva il testo OCR originale per il controllo manuale;
 - normalizza i valori in JSON e CSV;
 - genera una dashboard HTML offline con grafici interattivi e tabella storica;
+- include una sezione espandibile per i dettagli del referto selezionato, comprese massa grassa e massa magra dei singoli segmenti;
 - permette correzioni esplicite tramite un file di override, senza perdere l’estrazione originale;
 - mantiene separati dispositivo e tipo di report, così da poter estendere il progetto a eventuali test funzionali o posturali.
 
