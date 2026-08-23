@@ -1,0 +1,91 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AfaScan — andamento</title>
+<style>
+:root { color-scheme: light dark; --bg: light-dark(#f6f7f9,#101216); --fg: light-dark(#17202a,#f3f5f7); --muted: light-dark(#5d6875,#aab4bf); --card: light-dark(#fff,#191d23); --line: light-dark(#d8dde3,#323944); --accent: #ed2e61; --accent-soft: light-dark(#fde7ee,#4d1d2e); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { width: min(1120px, calc(100% - 32px)); margin: 28px auto 48px; }
+h1 { margin: 0 0 4px; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.02em; }
+.sub { color: var(--muted); margin: 0 0 24px; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 18px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.metric-label { color: var(--muted); font-size: 13px; }
+.metric { font-size: 26px; font-weight: 650; margin-top: 3px; }
+.delta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.delta.good { color: #198754; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 18px; }
+.toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom: 10px; }
+label { color: var(--muted); font-size: 13px; }
+select { margin-left: 6px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+svg { width: 100%; height: 310px; display:block; }
+.axis { stroke: var(--line); stroke-width: 1; }
+.gridline { stroke: var(--line); stroke-width: 1; opacity: .55; }
+.series { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+.chart-text { fill: var(--muted); font-size: 12px; }
+.table-wrap { overflow-x: auto; }
+table { width:100%; border-collapse: collapse; min-width: 720px; }
+th, td { text-align:left; padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-size: 12px; font-weight: 500; }
+td { font-variant-numeric: tabular-nums; }
+.badge { color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 999px; font-size: 12px; }
+@media (max-width: 760px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } main { width: min(100% - 20px, 1120px); margin-top: 18px; } }
+</style>
+<main id="app">
+  <h1>AfaScan — andamento</h1>
+  <p class="sub" id="subtitle"></p>
+  <section class="grid" id="summary" aria-label="Ultima pesata"></section>
+  <section class="panel">
+    <div class="toolbar">
+      <strong id="chart-title">Andamento</strong>
+      <label>Parametro <select id="metric"></select></label>
+    </div>
+    <svg id="chart" viewBox="0 0 900 310" role="img" aria-label="Grafico dell'andamento nel tempo"></svg>
+  </section>
+  <section class="panel">
+    <div class="toolbar"><strong>Tutte le pesate</strong><span class="badge" id="count"></span></div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Data</th><th>Peso</th><th>Massa muscolare scheletrica</th><th>% grasso</th><th>Massa grassa</th><th>BMI</th><th>BMR</th><th>Viscerale</th><th>Acqua</th><th>Score</th>
+    </tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+</main>
+<script>
+const records = __MEASUREMENTS_JSON__.filter(r => r.date).sort((a,b) => a.date.localeCompare(b.date));
+const fields = {
+  weight_kg: ['Peso', 'kg'],
+  body_fat_percent: ['Grasso corporeo', '%'],
+  skeletal_muscle_mass_kg: ['Massa muscolare scheletrica', 'kg'],
+  body_fat_mass_kg: ['Massa grassa', 'kg'],
+  bmi: ['BMI', ''],
+  basal_metabolic_rate_kcal: ['Metabolismo basale', 'kcal'],
+  visceral_fat_level: ['Grasso viscerale', ''],
+  water_percent: ['Acqua', '%']
+};
+const fmt = (n, digits=1) => n == null ? '—' : Number(n).toLocaleString('it-IT', {maximumFractionDigits:digits, minimumFractionDigits:digits});
+const latest = records.at(-1), first = records[0];
+document.getElementById('subtitle').textContent = records.length ? `${records.length} referti · dal ${first.date} al ${latest.date}` : 'Nessun referto importato';
+document.getElementById('count').textContent = `${records.length} referti`;
+const summaryFields = ['weight_kg','body_fat_percent','skeletal_muscle_mass_kg','body_fat_mass_kg'];
+document.getElementById('summary').innerHTML = summaryFields.map(key => {
+  const [label, unit] = fields[key]; const delta = latest[key] != null && first[key] != null ? latest[key]-first[key] : null;
+  const sign = delta > 0 ? '+' : ''; const good = key === 'skeletal_muscle_mass_kg' ? delta >= 0 : key.includes('fat') || key === 'weight_kg' ? delta <= 0 : false;
+  return `<div class="card"><div class="metric-label">${label}</div><div class="metric">${fmt(latest[key])} ${unit}</div><div class="delta ${good ? 'good' : ''}">${delta == null ? '' : `${sign}${fmt(delta)} ${unit} dal primo referto`}</div></div>`;
+}).join('');
+const select = document.getElementById('metric');
+Object.entries(fields).forEach(([key,[label,unit]]) => { const opt = document.createElement('option'); opt.value=key; opt.textContent=`${label}${unit ? ` (${unit})` : ''}`; select.appendChild(opt); });
+select.value = 'weight_kg'; select.addEventListener('change', () => draw(select.value));
+function draw(key) {
+  const svg = document.getElementById('chart'); const W=900,H=310,L=58,R=20,T=18,B=42; const vals=records.map(r=>Number(r[key])).filter(Number.isFinite);
+  if (!vals.length) { svg.innerHTML=''; return; }
+  const min=Math.min(...vals), max=Math.max(...vals), pad=(max-min || 1)*.15; const lo=min-pad, hi=max+pad;
+  const x=i => L + (records.length === 1 ? (W-L-R)/2 : i*(W-L-R)/(records.length-1)); const y=v => T + (hi-v)*(H-T-B)/(hi-lo);
+  const points=records.map((r,i)=>Number.isFinite(Number(r[key])) ? `${x(i)},${y(Number(r[key]))}` : '').filter(Boolean).join(' ');
+  const ticks=4; let html=''; for(let i=0;i<=ticks;i++){ const v=lo+(hi-lo)*i/ticks, yy=y(v); html += `<line class="gridline" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><text class="chart-text" x="${L-8}" y="${yy+4}" text-anchor="end">${fmt(v)}</text>`; }
+  html += `<line class="axis" x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}"/><polyline class="series" points="${points}"/>`;
+  records.forEach((r,i)=>{ if(Number.isFinite(Number(r[key]))) html += `<circle class="dot" cx="${x(i)}" cy="${y(Number(r[key]))}" r="5"><title>${r.date}: ${fmt(r[key])} ${fields[key][1]}</title></circle>`; html += `<text class="chart-text" x="${x(i)}" y="${H-16}" text-anchor="middle">${r.date.slice(5)}</text>`; });
+  svg.innerHTML=html; document.getElementById('chart-title').textContent = fields[key][0];
+}
+draw('weight_kg');
+document.getElementById('rows').innerHTML = records.slice().reverse().map(r => `<tr><td>${r.date}</td><td>${fmt(r.weight_kg)} kg</td><td>${fmt(r.skeletal_muscle_mass_kg)} kg</td><td>${fmt(r.body_fat_percent)}%</td><td>${fmt(r.body_fat_mass_kg)} kg</td><td>${fmt(r.bmi)}</td><td>${r.basal_metabolic_rate_kcal ?? '—'} kcal</td><td>${r.visceral_fat_level ?? '—'}</td><td>${fmt(r.water_percent)}%</td><td>${r.score ?? '—'}/100</td></tr>`).join('');
+</script>
