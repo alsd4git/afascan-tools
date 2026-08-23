@@ -30,7 +30,17 @@ th, td { text-align:left; padding: 9px 8px; border-bottom: 1px solid var(--line)
 th { color: var(--muted); font-size: 12px; font-weight: 500; }
 td { font-variant-numeric: tabular-nums; }
 .badge { color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 999px; font-size: 12px; }
+details > summary { cursor: pointer; font-weight: 500; }
+.details-content { margin-top: 16px; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.detail-block { min-width: 0; }
+.detail-block h3 { margin: 0 0 8px; font-size: 16px; font-weight: 500; }
+.detail-table { min-width: 0; }
+.detail-table th, .detail-table td { padding: 7px 8px; }
+.detail-table th { width: 65%; }
+.detail-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 @media (max-width: 760px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } main { width: min(100% - 20px, 1120px); margin-top: 18px; } }
+@media (max-width: 560px) { .detail-grid { grid-template-columns: 1fr; } }
 </style>
 <main id="app">
   <h1>AfaScan — andamento</h1>
@@ -48,6 +58,16 @@ td { font-variant-numeric: tabular-nums; }
     <div class="table-wrap"><table><thead><tr>
       <th>Data</th><th>Peso</th><th>Massa muscolare scheletrica</th><th>% grasso</th><th>Massa grassa</th><th>BMI</th><th>BMR</th><th>Viscerale</th><th>Acqua</th><th>Score</th>
     </tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+  <section class="panel">
+    <details id="details-panel">
+      <summary>Dettagli segmentali e del referto</summary>
+      <div class="toolbar details-content">
+        <span class="detail-note" id="details-date-label"></span>
+        <label>Pesata <select id="detail-date"></select></label>
+      </div>
+      <div class="detail-grid" id="details-content"></div>
+    </details>
   </section>
 </main>
 <script>
@@ -88,4 +108,39 @@ function draw(key) {
 }
 draw('weight_kg');
 document.getElementById('rows').innerHTML = records.slice().reverse().map(r => `<tr><td>${r.date}</td><td>${fmt(r.weight_kg)} kg</td><td>${fmt(r.skeletal_muscle_mass_kg)} kg</td><td>${fmt(r.body_fat_percent)}%</td><td>${fmt(r.body_fat_mass_kg)} kg</td><td>${fmt(r.bmi)}</td><td>${r.basal_metabolic_rate_kcal ?? '—'} kcal</td><td>${r.visceral_fat_level ?? '—'}</td><td>${fmt(r.water_percent)}%</td><td>${r.score ?? '—'}/100</td></tr>`).join('');
+const segmentLabels = { right_arm: 'Braccio destro', left_arm: 'Braccio sinistro', trunk: 'Tronco', right_leg: 'Gamba destra', left_leg: 'Gamba sinistra' };
+const detailDate = document.getElementById('detail-date');
+records.slice().reverse().forEach(r => { const option = document.createElement('option'); option.value = r.date; option.textContent = r.date; detailDate.appendChild(option); });
+detailDate.value = latest?.date ?? '';
+detailDate.addEventListener('change', renderDetails);
+function segmentTable(title, values) {
+  const rows = values ? Object.entries(segmentLabels).map(([key,label]) => `<tr><th>${label}</th><td>${fmt(values[key], 2)} kg</td></tr>`).join('') : '<tr><td colspan="2">Non disponibile</td></tr>';
+  return `<div class="detail-block"><h3>${title}</h3><table class="detail-table"><tbody>${rows}</tbody></table></div>`;
+}
+function detailTable(title, rows) {
+  return `<div class="detail-block"><h3>${title}</h3><table class="detail-table"><tbody>${rows.map(([label,value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function renderDetails() {
+  const record = records.find(r => r.date === detailDate.value) ?? latest;
+  if (!record) return;
+  document.getElementById('details-date-label').textContent = `Valori riportati nel referto del ${record.date}`;
+  document.getElementById('details-content').innerHTML = [
+    segmentTable('Massa grassa segmentale', record.segment_fat_kg),
+    segmentTable('Massa magra segmentale', record.segment_lean_kg),
+    detailTable('Composizione', [
+      ['Massa muscolare totale', `${fmt(record.muscle_mass_kg)} kg`],
+      ['Massa ossea', `${fmt(record.bone_mass_kg)} kg`],
+      ['Massa grassa', `${fmt(record.body_fat_mass_kg)} kg`],
+      ['Peso obiettivo', `${fmt(record.target_weight_kg)} kg`]
+    ]),
+    detailTable('Parametri aggiuntivi', [
+      ['Metabolismo basale', `${record.basal_metabolic_rate_kcal ?? '—'} kcal`],
+      ['Grasso viscerale', record.visceral_fat_level ?? '—'],
+      ['Proteine', `${fmt(record.protein_percent)}%`],
+      ['Acqua', `${fmt(record.water_percent)}%`],
+      ['Score AfaScan', `${record.score ?? '—'} / 100`]
+    ])
+  ].join('');
+}
+renderDetails();
 </script>

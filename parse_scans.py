@@ -104,6 +104,8 @@ def extract_record(image: Path, text: str) -> dict:
         "visceral_fat_level": integer(first([r"Visceral Fat Level\s+(\d{1,2})"], text)),
         "protein_percent": number(first([r"Protein Percent\s+([0-9]+[.,][0-9])%"], text)),
         "water_percent": number(first([r"Water Percent\s+([0-9]+[.,][0-9])%"], text)),
+        "segment_fat_kg": None,
+        "segment_lean_kg": None,
         "ocr_status": "ocr",
     }
     return record
@@ -127,9 +129,14 @@ def merge_override(record: dict, overrides: dict) -> dict:
 def tidy(records: list[dict]) -> list[dict]:
     records.sort(key=lambda row: (row.get("date") or "", row.get("source_file") or ""))
     for row in records:
+        required = [
+            "date", "weight_kg", "body_fat_percent", "skeletal_muscle_mass_kg"
+        ]
+        if row.get("report_type") == "body_composition":
+            required.extend(["segment_fat_kg", "segment_lean_kg"])
         row["review_required"] = any(
             row.get(field) is None
-            for field in ("date", "weight_kg", "body_fat_percent", "skeletal_muscle_mass_kg")
+            for field in required
         )
     return records
 
@@ -140,10 +147,21 @@ def write_csv(records: list[dict]) -> None:
         "body_fat_mass_kg", "bmi", "basal_metabolic_rate_kcal", "visceral_fat_level",
         "water_percent", "protein_percent", "score", "target_weight_kg", "review_required",
     ]
+    segment_names = ["right_arm", "left_arm", "trunk", "right_leg", "left_leg"]
+    fields += [f"segment_fat_{name}_kg" for name in segment_names]
+    fields += [f"segment_lean_{name}_kg" for name in segment_names]
+
+    def value(row: dict, field: str):
+        if field.startswith("segment_fat_"):
+            return (row.get("segment_fat_kg") or {}).get(field.removeprefix("segment_fat_").removesuffix("_kg"))
+        if field.startswith("segment_lean_"):
+            return (row.get("segment_lean_kg") or {}).get(field.removeprefix("segment_lean_").removesuffix("_kg"))
+        return row.get(field)
+
     with CSV_PATH.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
-        writer.writerows({field: row.get(field) for field in fields} for row in records)
+        writer.writerows({field: value(row, field) for field in fields} for row in records)
 
 
 def write_dashboard(records: list[dict]) -> None:
