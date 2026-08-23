@@ -1,5 +1,7 @@
 # AfaScan tools
 
+[![CI](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml)
+
 > Strumenti locali per trasformare i report AfaScan ricevuti come screenshot in dati strutturati e grafici consultabili.
 
 Il progetto nasce da un’esigenza personale, ma il parser è pensato per essere riutilizzabile con report AfaScan dello stesso formato.
