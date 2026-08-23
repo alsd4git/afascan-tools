@@ -25,7 +25,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent
 INPUT_DIR = ROOT / "screenshots"
 DATA_DIR = ROOT / "data"
@@ -85,19 +84,60 @@ def extract_record(image: Path, text: str) -> dict:
 
     record = {
         "device": "AfaScan",
-        "report_type": "body_composition" if re.search(r"Body Composition Analysis", text, re.IGNORECASE) else "unknown",
+        "report_type": (
+            "body_composition"
+            if re.search(r"Body Composition Analysis", text, re.IGNORECASE)
+            else "unknown"
+        ),
         "date": report_date,
         "source_file": image.name,
         "report_id": first([r"\b(20\d{12})\b"], text),
         "height_cm": number(first([r"\b(17\d)\s+30\s+(?:Male|Female)"], text)),
         "gender": first([r"\b(?:17\d)\s+30\s+(Male|Female)\b"], text),
-        "weight_kg": number(first([r"Weight\s*=.*?\n\s*([0-9]+[.,][0-9])\s*kg", r"Weight \(kg\)\s+([0-9]+[.,][0-9])"], text)),
+        "weight_kg": number(
+            first(
+                [
+                    r"Weight\s*=.*?\n\s*([0-9]+[.,][0-9])\s*kg",
+                    r"Weight \(kg\)\s+([0-9]+[.,][0-9])",
+                ],
+                text,
+            )
+        ),
         "muscle_mass_kg": number(first([r"Weight\s*=.*?\n\s*[0-9]+[.,][0-9]\s*kg\s+([0-9]+[.,][0-9])\s*kg"], text)),
-        "bone_mass_kg": number(first([r"Weight\s*=.*?\n\s*[0-9]+[.,][0-9]\s*kg\s+[0-9]+[.,][0-9]\s*kg\s+([0-9]+[.,][0-9])\s*kg"], text)),
-        "body_fat_mass_kg": number(first([r"Weight\s*=.*?\n\s*(?:[0-9]+[.,][0-9]\s*kg\s+){3}([0-9]+[.,][0-9])\s*kg"], text)),
-        "skeletal_muscle_mass_kg": number(first([r"Skeletal Muscle Mass \(Kg\).*?\n.*?([0-9]+[.,][0-9])", r"Skeletal Muscle Mass \(kg\).*?\n.*?([0-9]+[.,][0-9])"], text)),
+        "bone_mass_kg": number(
+            first(
+                [
+                    r"Weight\s*=.*?\n\s*[0-9]+[.,][0-9]\s*kg\s+"
+                    r"[0-9]+[.,][0-9]\s*kg\s+([0-9]+[.,][0-9])\s*kg"
+                ],
+                text,
+            )
+        ),
+        "body_fat_mass_kg": number(
+            first(
+                [r"Weight\s*=.*?\n\s*(?:[0-9]+[.,][0-9]\s*kg\s+){3}([0-9]+[.,][0-9])\s*kg"],
+                text,
+            )
+        ),
+        "skeletal_muscle_mass_kg": number(
+            first(
+                [
+                    r"Skeletal Muscle Mass \(Kg\).*?\n.*?([0-9]+[.,][0-9])",
+                    r"Skeletal Muscle Mass \(kg\).*?\n.*?([0-9]+[.,][0-9])",
+                ],
+                text,
+            )
+        ),
         "bmi": number(first([r"BMI \(kg/m\??2\).*?\n.*?([0-9]+[.,][0-9])"], text)),
-        "body_fat_percent": number(first([r"Body Fat Percent \(%\).*?\n.*?([0-9]+[.,][0-9])", r"Body Fat Percent \(%\)\s+([0-9]+[.,][0-9])"], text)),
+        "body_fat_percent": number(
+            first(
+                [
+                    r"Body Fat Percent \(%\).*?\n.*?([0-9]+[.,][0-9])",
+                    r"Body Fat Percent \(%\)\s+([0-9]+[.,][0-9])",
+                ],
+                text,
+            )
+        ),
         "score": integer(first([r"AfaScan\s*\n\s*(\d{2})\s*/\s*100", r"AfaScan\s+(\d{2})\s*/\s*100"], text)),
         "target_weight_kg": number(first([r"Target Weight\s+([0-9]+[.,][0-9])\s*kg"], text)),
         "basal_metabolic_rate_kcal": integer(first([r"Basal Metabolic Rate\s+(\d{3,4})"], text)),
