@@ -28,7 +28,7 @@ html = html.replace(
   /(<script type="application\/json" id="measurements-data">)[\s\S]*?(<\/script>)/,
   `$1${JSON.stringify(records)}$2`,
 );
-const script = html.match(/<script>\n([\s\S]*?)\n<\/script>/)?.[1];
+const script = html.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
 if (!script) throw new Error('Script dashboard non trovato');
 
 const elements = new Map();
