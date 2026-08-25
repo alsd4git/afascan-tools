@@ -40,20 +40,47 @@ CSV_PATH = DATA_DIR / "measurements.csv"
 DASHBOARD_PATH = ROOT / "dashboard.html"
 SEGMENT_NAMES = ("right_arm", "left_arm", "trunk", "right_leg", "left_leg")
 RECORD_FIELDS = {
-    "device", "report_type", "date", "source_file", "report_id", "height_cm", "gender",
-    "weight_kg", "muscle_mass_kg", "bone_mass_kg", "body_fat_mass_kg",
-    "skeletal_muscle_mass_kg", "bmi", "body_fat_percent", "score", "target_weight_kg",
-    "basal_metabolic_rate_kcal", "visceral_fat_level", "protein_percent", "water_percent",
-    "segment_fat_kg", "segment_lean_kg", "ocr_status", "review_required",
+    "device",
+    "report_type",
+    "date",
+    "source_file",
+    "report_id",
+    "height_cm",
+    "gender",
+    "weight_kg",
+    "muscle_mass_kg",
+    "bone_mass_kg",
+    "body_fat_mass_kg",
+    "skeletal_muscle_mass_kg",
+    "bmi",
+    "body_fat_percent",
+    "score",
+    "target_weight_kg",
+    "basal_metabolic_rate_kcal",
+    "visceral_fat_level",
+    "protein_percent",
+    "water_percent",
+    "segment_fat_kg",
+    "segment_lean_kg",
+    "ocr_status",
+    "review_required",
 }
 OVERRIDE_FIELDS = RECORD_FIELDS - {"device", "report_type", "source_file", "review_required"}
 NUMERIC_RANGES = {
-    "height_cm": (50, 250), "weight_kg": (20, 400), "muscle_mass_kg": (0, 400),
-    "bone_mass_kg": (0, 100), "body_fat_mass_kg": (0, 200),
-    "skeletal_muscle_mass_kg": (0, 200), "bmi": (5, 100), "body_fat_percent": (0, 100),
+    "height_cm": (50, 250),
+    "weight_kg": (20, 400),
+    "muscle_mass_kg": (0, 400),
+    "bone_mass_kg": (0, 100),
+    "body_fat_mass_kg": (0, 200),
+    "skeletal_muscle_mass_kg": (0, 200),
+    "bmi": (5, 100),
+    "body_fat_percent": (0, 100),
     "score": (0, 100),
-    "target_weight_kg": (20, 400), "basal_metabolic_rate_kcal": (500, 5000),
-    "visceral_fat_level": (0, 50), "protein_percent": (0, 100), "water_percent": (0, 100),
+    "target_weight_kg": (20, 400),
+    "basal_metabolic_rate_kcal": (500, 5000),
+    "visceral_fat_level": (0, 50),
+    "protein_percent": (0, 100),
+    "water_percent": (0, 100),
 }
 SEGMENT_RANGES = {"segment_fat_kg": (0, 200), "segment_lean_kg": (0, 300)}
 INTEGER_FIELDS = {"height_cm", "score", "basal_metabolic_rate_kcal", "visceral_fat_level"}
@@ -76,9 +103,7 @@ def finite_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
 
 
-def validate_numeric(
-    value: object, field: str, location: str, bounds: tuple[float, float] | None = None
-) -> None:
+def validate_numeric(value: object, field: str, location: str, bounds: tuple[float, float] | None = None) -> None:
     if value is None:
         return
     if not finite_number(value):
@@ -87,9 +112,7 @@ def validate_numeric(
         raise ValueError(f"{location}.{field}: atteso un intero, trovato {value!r}")
     minimum, maximum = bounds if bounds is not None else NUMERIC_RANGES.get(field, (None, None))
     if minimum is not None and not minimum <= float(value) <= maximum:
-        raise ValueError(
-            f"{location}.{field}: valore fuori intervallo [{minimum}, {maximum}], trovato {value!r}"
-        )
+        raise ValueError(f"{location}.{field}: valore fuori intervallo [{minimum}, {maximum}], trovato {value!r}")
 
 
 def validate_segment(value: object, field: str, location: str) -> None:
@@ -209,16 +232,14 @@ def extract_record(image: Path, text: str) -> dict:
     )
     filename_date = re.search(r"Screenshot_(\d{8})-(\d{6})", image.name)
     if not report_date and filename_date:
-        report_date = dt.datetime.strptime(
-            filename_date.group(1) + filename_date.group(2), "%Y%m%d%H%M%S"
-        ).date().isoformat()
+        report_date = (
+            dt.datetime.strptime(filename_date.group(1) + filename_date.group(2), "%Y%m%d%H%M%S").date().isoformat()
+        )
 
     record = {
         "device": "AfaScan",
         "report_type": (
-            "body_composition"
-            if re.search(r"Body Composition Analysis", text, re.IGNORECASE)
-            else "unknown"
+            "body_composition" if re.search(r"Body Composition Analysis", text, re.IGNORECASE) else "unknown"
         ),
         "date": report_date,
         "source_file": image.name,
@@ -315,9 +336,7 @@ def complete_segment(value: object) -> bool:
 def tidy(records: list[dict]) -> list[dict]:
     records.sort(key=lambda row: (row.get("date") or "", row.get("source_file") or ""))
     for row in records:
-        required = [
-            "date", "weight_kg", "body_fat_percent", "skeletal_muscle_mass_kg"
-        ]
+        required = ["date", "weight_kg", "body_fat_percent", "skeletal_muscle_mass_kg"]
         if row.get("report_type") == "body_composition":
             required.extend(["segment_fat_kg", "segment_lean_kg"])
         row["review_required"] = any(row.get(field) is None for field in required)
@@ -329,9 +348,20 @@ def tidy(records: list[dict]) -> list[dict]:
 
 def write_csv(records: list[dict]) -> None:
     fields = [
-        "date", "source_file", "weight_kg", "skeletal_muscle_mass_kg", "body_fat_percent",
-        "body_fat_mass_kg", "bmi", "basal_metabolic_rate_kcal", "visceral_fat_level",
-        "water_percent", "protein_percent", "score", "target_weight_kg", "review_required",
+        "date",
+        "source_file",
+        "weight_kg",
+        "skeletal_muscle_mass_kg",
+        "body_fat_percent",
+        "body_fat_mass_kg",
+        "bmi",
+        "basal_metabolic_rate_kcal",
+        "visceral_fat_level",
+        "water_percent",
+        "protein_percent",
+        "score",
+        "target_weight_kg",
+        "review_required",
     ]
     segment_names = ["right_arm", "left_arm", "trunk", "right_leg", "left_leg"]
     fields += [f"segment_fat_{name}_kg" for name in segment_names]
