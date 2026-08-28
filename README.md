@@ -1,143 +1,145 @@
 # AfaScan tools
 
 [![CI](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
+[![uv](https://img.shields.io/badge/managed%20with-uv-6f42c1.svg)](https://docs.astral.sh/uv/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> Strumenti locali per trasformare i report AfaScan ricevuti come screenshot in dati strutturati e grafici consultabili.
+Strumenti locali per trasformare gli screenshot dei referti AfaScan in dati strutturati, esportazioni tabellari e una dashboard HTML offline.
 
-Il progetto nasce da un’esigenza personale, ma il parser è pensato per essere riutilizzabile con report AfaScan dello stesso formato.
+![Preview della dashboard AfaScan con dati sintetici](docs/dashboard-preview.jpg)
 
-> **Stato:** prototipo funzionante, semi-automatico. I valori estratti vanno verificati quando l’OCR segnala un’anomalia.
+*La preview usa esclusivamente dati demo sintetici e non contiene referti personali.*
 
 ## Cosa fa
 
-- legge gli screenshot con OCR tramite Tesseract;
-- conserva il testo OCR originale per il controllo manuale;
-- normalizza i valori in JSON e CSV;
-- genera una dashboard HTML offline con grafici interattivi e tabella storica;
-- include una sezione sempre visibile per i dettagli del referto selezionato, comprese massa grassa e massa magra dei singoli segmenti;
-- permette correzioni esplicite tramite un file di override, senza perdere l’estrazione originale;
-- mantiene separati dispositivo e tipo di report, così da poter estendere il progetto a eventuali test funzionali o posturali.
+- importa gli screenshot con OCR tramite Tesseract;
+- conserva il testo OCR originale per il controllo e la correzione;
+- normalizza i dati in JSON e CSV;
+- genera una dashboard statica con grafico storico, tabella delle pesate e dettagli segmentali;
+- mostra le variazioni dal primo referto, inclusi massa grassa e massa magra dei singoli segmenti;
+- applica correzioni esplicite tramite `data/overrides.json`;
+- valida tipi, date, intervalli, segmenti e identificatori prima di scrivere gli output;
+- evita di rieseguire l’OCR sui file già importati, salvo richiesta esplicita.
 
-Il progetto non interpreta i risultati dal punto di vista medico: visualizza e organizza le misure riportate dallo strumento.
+Il progetto organizza le misure riportate dallo strumento e non fornisce interpretazioni o indicazioni mediche.
 
-## Requisiti
+## Avvio rapido
 
-- [uv](https://docs.astral.sh/uv/);
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract).
+### 1. Installa i prerequisiti
 
-`uv` gestisce automaticamente l’ambiente Python del progetto e il relativo lockfile. Non serve attivare manualmente un virtual environment.
+Sono necessari [uv](https://docs.astral.sh/uv/) e [Tesseract OCR](https://github.com/tesseract-ocr/tesseract).
 
-Installare `uv` seguendo la [documentazione ufficiale](https://docs.astral.sh/uv/getting-started/installation/). Su macOS con Homebrew:
+| Sistema | uv | Tesseract |
+| --- | --- | --- |
+| macOS | `brew install uv` | `brew install tesseract` |
+| Debian/Ubuntu | [Script ufficiale](https://docs.astral.sh/uv/getting-started/installation/) | `sudo apt install tesseract-ocr` |
+| Windows PowerShell | `winget install --id=astral-sh.uv -e` | [Installer UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) |
 
-```bash
-brew install uv
-```
-
-Su Linux:
+Su Debian/Ubuntu puoi usare anche questo comando per installare uv:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Su Windows PowerShell:
+Su Windows, durante l’installazione di Tesseract includi la lingua inglese e aggiungi `C:\Program Files\Tesseract-OCR` al `PATH`; poi riavvia PowerShell.
 
-```powershell
-winget install --id=astral-sh.uv -e
-```
+`uv` crea e gestisce automaticamente l’ambiente Python del progetto: non serve attivare manualmente un virtual environment.
 
-Tesseract è il motore OCR nativo e va installato separatamente. Su macOS con Homebrew:
+### 2. Importa gli screenshot
 
-```bash
-brew install tesseract
-```
-
-Su Debian/Ubuntu:
-
-```bash
-sudo apt install tesseract-ocr
-```
-
-Su Windows, installare Tesseract tramite [l’installer UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki), includendo i dati lingua inglese e aggiungendo `C:\Program Files\Tesseract-OCR` al `PATH`. Riavviare PowerShell dopo la modifica.
-
-Non sono richieste librerie Python esterne al momento.
-
-## Utilizzo
-
-Dalla directory del progetto:
+Copia i PNG nella cartella `screenshots/`, preferibilmente con nomi come `Screenshot_YYYYMMDD-HHMMSS.png`, poi esegui:
 
 ```bash
 uv run parse_scans.py
 ```
 
-Lo script cerca i file `screenshots/Screenshot_*.png`, esegue l’OCR solo sugli screenshot non ancora presenti nell’archivio e aggiorna:
+Alla prima esecuzione vengono importati gli screenshot presenti; nelle esecuzioni successive vengono processati solo quelli nuovi.
 
-- `data/measurements.json` — archivio normalizzato generato;
-- `data/measurements.csv` — esportazione tabellare;
-- `data/ocr/*.txt` — testo OCR grezzo;
-- `dashboard.html` — dashboard generata.
+### 3. Apri la dashboard
 
-Per aggiungere una nuova pesata è sufficiente copiare il PNG nella cartella `screenshots/` e rilanciare il comando. È consigliato il nome `Screenshot_YYYYMMDD-HHMMSS.png`.
-
-Se l’OCR sbaglia, aggiungere i valori corretti in `data/overrides.json`, usando il nome del file come chiave, e rilanciare l’importazione. Per rigenerare CSV e dashboard senza ripetere l’OCR:
+Apri `dashboard.html` con un doppio click, oppure usa il comando del tuo sistema:
 
 ```bash
-uv run parse_scans.py --no-ocr
-```
-
-Per rielaborare intenzionalmente tutti gli screenshot già importati:
-
-```bash
-uv run parse_scans.py --force-ocr
-```
-
-Il parser valida struttura, tipi, intervalli plausibili e identificatori prima di aggiornare gli output. In caso di errore indica il file e il campo problematico e non scrive gli output della nuova esecuzione.
-
-`data/measurements.json` è un output generato: non modificarlo direttamente. Per correggere un valore usare `data/overrides.json`; alla rigenerazione il parser ricostruisce la base dal testo in `data/ocr/` e riapplica le correzioni.
-Le chiavi di `overrides.json` devono corrispondere a uno screenshot presente o a un referto già archiviato; un nome file inesistente viene segnalato come errore.
-
-## Come vedere la dashboard
-
-La dashboard è un normale file HTML autosufficiente.
-
-Su macOS:
-
-```bash
+# macOS
 open dashboard.html
-```
 
-Su Windows PowerShell:
+# Linux
+xdg-open dashboard.html
 
-```powershell
+# Windows PowerShell
 Start-Process .\dashboard.html
 ```
 
-Su Linux:
+Non è necessario avviare un server web: la dashboard è un file HTML statico autosufficiente.
 
-```bash
-xdg-open dashboard.html
+## Comandi
+
+| Comando | Uso |
+| --- | --- |
+| `uv run parse_scans.py` | Importa i nuovi screenshot ed esegue OCR solo quando serve. |
+| `uv run parse_scans.py --no-ocr` | Rigenera JSON, CSV e dashboard senza eseguire Tesseract. |
+| `uv run parse_scans.py --force-ocr` | Riesegue intenzionalmente l’OCR su tutti gli screenshot presenti. |
+| `uv run parse_scans.py --help` | Mostra le opzioni disponibili. |
+
+`--no-ocr` e `--force-ocr` sono alternativi.
+
+## Correggere un risultato OCR
+
+`data/measurements.json` è un output generato: non modificarlo direttamente. Inserisci invece le correzioni in `data/overrides.json`, usando il nome dello screenshot come chiave:
+
+```json
+{
+  "Screenshot_20260101-120000.png": {
+    "weight_kg": 80.4,
+    "body_fat_percent": 21.7
+  }
+}
 ```
 
-## Come aggiornare l’aspetto dell’HTML
+Poi rilancia `uv run parse_scans.py` oppure `uv run parse_scans.py --no-ocr`. Il parser ricostruisce la base dal testo in `data/ocr/` e riapplica gli override, rendendo reversibili le correzioni quando il testo OCR originale è disponibile.
 
-- modificare `dashboard.template.html` per cambiare layout, colori, tabelle o grafici;
-- non modificare direttamente `dashboard.html`: è un artefatto generato;
-- dopo le modifiche eseguire `uv run parse_scans.py --no-ocr` per rigenerare la dashboard usando i dati già presenti.
+Le chiavi degli override devono corrispondere a uno screenshot presente o a un referto archiviato; un nome inesistente viene segnalato come errore.
 
-Il JSON viene incorporato direttamente nell’HTML, quindi la dashboard non richiede database, rete o servizi esterni.
+## Personalizzare la dashboard
+
+- modifica `dashboard.template.html` per cambiare layout, colori, tabelle o grafici;
+- non modificare direttamente `dashboard.html`, perché è un artefatto generato;
+- dopo le modifiche esegui `uv run parse_scans.py --no-ocr` per rigenerare l’HTML.
+
+Il JSON viene incorporato nell’HTML in un blocco dati separato; non sono richiesti database, rete o servizi esterni.
+
+## Sviluppo e verifiche
+
+```bash
+uv sync --dev
+uv run ruff check .
+uv run pytest -q
+uv run python -m compileall -q parse_scans.py tests
+node tests/dashboard_smoke.mjs dashboard.html empty
+node tests/dashboard_smoke.mjs dashboard.html sample
+```
+
+La CI esegue gli stessi controlli su Python 3.10 e 3.13 e verifica anche la dashboard con archivio vuoto, valori mancanti e date duplicate.
 
 ## Struttura
 
 ```text
-parse_scans.py            # importazione OCR e generazione output
-dashboard.template.html   # sorgente della dashboard
-dashboard.html            # dashboard generata (locale)
-screenshots/              # screenshot originali (locale)
+parse_scans.py              # importazione OCR e generazione output
+dashboard.template.html     # sorgente della dashboard
+dashboard.html              # dashboard generata (locale)
+favicon.svg                 # favicon della dashboard
+docs/dashboard-preview.jpg  # preview con dati sintetici
+screenshots/                # screenshot originali (locale)
 data/
-  measurements.json       # dati normalizzati generati (locale)
-  measurements.csv        # esportazione (locale)
-  overrides.json          # correzioni OCR (locale)
-  ocr/                    # OCR grezzo (locale)
+  measurements.json         # dati normalizzati generati (locale)
+  measurements.csv          # esportazione tabellare (locale)
+  overrides.json            # correzioni OCR (locale)
+  ocr/                      # OCR grezzo (locale)
+tests/                      # test Python e smoke test JavaScript
 ```
+
+I dati personali e gli artefatti generati sono esclusi dal repository tramite `.gitignore`.
 
 ## Licenza
 
