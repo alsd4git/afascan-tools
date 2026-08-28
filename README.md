@@ -113,6 +113,7 @@ Il JSON viene incorporato nell’HTML in un blocco dati separato; non sono richi
 
 ```bash
 uv sync --dev
+uv run ruff format --check .
 uv run ruff check .
 uv run pytest -q
 uv run python -m compileall -q parse_scans.py tests
@@ -120,7 +121,7 @@ node tests/dashboard_smoke.mjs dashboard.html empty
 node tests/dashboard_smoke.mjs dashboard.html sample
 ```
 
-La CI esegue gli stessi controlli su Python 3.10 e 3.13 e verifica anche la dashboard con archivio vuoto, valori mancanti e date duplicate.
+La CI esegue gli stessi controlli su Linux, macOS e Windows con Python 3.10 e 3.14. Verifica anche la dashboard con archivio vuoto, valori mancanti e date duplicate.
 
 ## Struttura
 
