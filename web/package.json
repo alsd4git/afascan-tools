@@ -1,0 +1,23 @@
+{
+  "name": "afascan-tools-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "copy-ocr-assets": "node scripts/copy-ocr-assets.mjs",
+    "predev": "npm run copy-ocr-assets",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
+    "prebuild": "npm run copy-ocr-assets",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "tesseract.js": "7.0.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  }
+}
