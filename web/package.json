@@ -8,6 +8,7 @@
     "predev": "npm run copy-ocr-assets",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run copy-ocr-assets",
     "test": "tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
     "prebuild": "npm run copy-ocr-assets",
     "build": "tsc --noEmit && vite build"
