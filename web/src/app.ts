@@ -17,7 +17,7 @@ app.innerHTML = `
 <section id="tab-import" class="tab active">
   <div class="privacy"><strong>Your reports stay on this device.</strong><span>OCR runs locally with self-hosted Tesseract.js assets. Original screenshots are released after processing.</span></div>
   <div id="drop" class="drop" tabindex="0"><strong>Drop AfaScan screenshots here</strong><span>or choose PNG/JPEG/WebP files · clipboard paste is supported</span><button id="choose">Choose screenshots</button><input id="files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden /></div>
-  <div id="ocr" class="card" hidden><div class="status"><strong id="ocr-name"></strong><span id="ocr-label"></span></div><progress id="ocr-progress" max="1" value="0"></progress></div>
+  <div id="ocr" class="card" hidden><div class="status"><strong id="ocr-name"></strong><span id="ocr-label"></span></div><p id="ocr-hint" class="ocr-hint"></p><progress id="ocr-progress" max="1"></progress></div>
   <div id="review" class="card" hidden></div>
 </section>
 <section id="tab-dashboard" class="tab"><div id="dashboard"></div></section>
@@ -42,6 +42,7 @@ const reportCount = $('#report-count');
 const ocrBox = $('#ocr');
 const ocrName = $('#ocr-name');
 const ocrLabel = $('#ocr-label');
+const ocrHint = $('#ocr-hint');
 const ocrProgress = $<HTMLProgressElement>('#ocr-progress');
 let reports: StoredReport[] = [];
 type ReviewItem = { mode: 'new'; hash: string; text: string; base: AfaScanRecord } | { mode: 'edit'; stored: StoredReport; base: AfaScanRecord };
@@ -130,15 +131,51 @@ async function removeReport(id: string): Promise<void> {
   await deleteReport(id); await refresh();
 }
 
+const OCR_STATUS: Record<string, string> = {
+  'loading tesseract core': 'Downloading OCR engine…',
+  'initializing tesseract': 'Initializing OCR engine…',
+  'loading language traineddata': 'Downloading English OCR data…',
+  'initializing api': 'Preparing OCR API…',
+  'recognizing text': 'Reading screenshot…',
+};
+
+function updateOcrStatus(status: string, progress: number, current: string): void {
+  const isResourceLoad = status === 'loading tesseract core' || status === 'loading language traineddata';
+  ocrName.textContent = current || 'Preparing OCR engine';
+  ocrLabel.textContent = OCR_STATUS[status] || status;
+  ocrHint.textContent = isResourceLoad
+    ? 'First OCR start downloads about 6 MB of self-hosted resources. This can take a while; your screenshot is not uploaded.'
+    : status === 'recognizing text'
+      ? 'OCR is running locally in your browser.'
+      : 'Preparing the local OCR engine…';
+
+  if (Number.isFinite(progress) && progress > 0 && progress <= 1) {
+    ocrProgress.value = progress;
+  } else {
+    ocrProgress.removeAttribute('value');
+  }
+}
+
 async function processFiles(files: File[]): Promise<void> {
   const images = files.filter((file) => file.type.startsWith('image/')); if (!images.length) return;
   ocrBox.hidden = false;
   let current = '';
-  const worker = await createOcrWorker((status, progress) => { ocrName.textContent = current; ocrLabel.textContent = status; ocrProgress.value = progress; });
+  let worker: Awaited<ReturnType<typeof createOcrWorker>> | null = null;
   let added = 0; let skipped = 0;
+
+  ocrName.textContent = 'Preparing OCR engine';
+  ocrLabel.textContent = 'Loading local OCR resources…';
+  ocrHint.textContent = 'First OCR start downloads about 6 MB of self-hosted resources. Later runs may reuse the browser cache.';
+  ocrProgress.removeAttribute('value');
+
   try {
+    worker = await createOcrWorker((status, progress) => updateOcrStatus(status, progress, current));
     for (const file of images) {
-      current = file.name || `clipboard-${Date.now()}.png`; ocrName.textContent = current; ocrLabel.textContent = 'Checking duplicate…'; ocrProgress.value = 0;
+      current = file.name || `clipboard-${Date.now()}.png`;
+      ocrName.textContent = current;
+      ocrLabel.textContent = 'Checking duplicate…';
+      ocrHint.textContent = 'Computing a SHA-256 hash locally before OCR.';
+      ocrProgress.removeAttribute('value');
       const hash = await sha256(file);
       if (reports.some((r) => r.source_sha256 === hash)) { skipped += 1; continue; }
       const text = await recognize(worker, file);
@@ -146,10 +183,14 @@ async function processFiles(files: File[]): Promise<void> {
       if (record.report_id && reports.some((r) => r.extracted_record.report_id === record.report_id)) { skipped += 1; continue; }
       queue.push({ mode: 'new', hash, text, base: record }); added += 1;
     }
-  } catch (error) { message(error instanceof Error ? error.message : 'OCR failed', true); }
-  finally { await worker.terminate(); ocrBox.hidden = true; }
+  } catch (error) {
+    message(error instanceof Error ? error.message : 'OCR failed', true);
+  } finally {
+    if (worker) await worker.terminate();
+    ocrBox.hidden = true;
+  }
   if (!active) { const next = queue.shift(); if (next) renderReview(next); }
-  message(`${added} report${added === 1 ? '' : 's'} ready for review${skipped ? ` · ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''}.`);
+  if (added || skipped) message(`${added} report${added === 1 ? '' : 's'} ready for review${skipped ? ` · ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''}.`);
 }
 
 const fileInput = $<HTMLInputElement>('#files');
