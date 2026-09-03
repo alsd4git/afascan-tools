@@ -5,6 +5,7 @@ const assetUrl = (path: string): string => new URL(path, document.baseURI).href;
 type ProgressHandler = (status: string, progress: number) => void;
 type Rectangle = { left: number; top: number; width: number; height: number };
 type CropBounds = { top: number; bottom: number };
+export type PreparedOcrImage = { source: Blob | File; cropped: boolean };
 
 let cachedWorker: Worker | null = null;
 let initialization: Promise<Worker> | null = null;
@@ -50,28 +51,28 @@ export function detectReportCrop(data: Uint8ClampedArray, width: number, height:
   return crop.bottom - crop.top < height - 16 ? crop : null;
 }
 
-async function prepareOcrImage(file: File): Promise<Blob | File> {
+export async function prepareOcrImage(file: File): Promise<PreparedOcrImage> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    return file;
+    return { source: file, cropped: false };
   }
   try {
     const canvas = document.createElement('canvas');
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
     const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return file;
+    if (!context) return { source: file, cropped: false };
     context.drawImage(bitmap, 0, 0);
     const crop = detectReportCrop(context.getImageData(0, 0, bitmap.width, bitmap.height).data, bitmap.width, bitmap.height);
-    if (!crop) return file;
+    if (!crop) return { source: file, cropped: false };
 
     canvas.width = bitmap.width;
     canvas.height = crop.bottom - crop.top;
     context.drawImage(bitmap, 0, crop.top, bitmap.width, canvas.height, 0, 0, bitmap.width, canvas.height);
     const cropped = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    return cropped ?? file;
+    return { source: cropped ?? file, cropped: Boolean(cropped) };
   } finally {
     bitmap.close();
   }
@@ -149,8 +150,8 @@ export async function createOcrWorker(onProgress: ProgressHandler): Promise<Work
   }
 }
 
-export async function recognize(worker: Worker, file: File): Promise<string> {
-  const source = await prepareOcrImage(file);
+export async function recognize(worker: Worker, file: File, prepared?: PreparedOcrImage): Promise<string> {
+  const source = (prepared ?? (await prepareOcrImage(file))).source;
   const primary = (await worker.recognize(source)).data.text;
   let bitmap: ImageBitmap;
   try {
