@@ -24,7 +24,6 @@ export async function createOcrWorker(onProgress: ProgressHandler): Promise<Work
   });
   let timeoutId: number | undefined;
   let timedOut = false;
-  let createdWorker: Worker | null = null;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = window.setTimeout(
       () => {
@@ -48,7 +47,6 @@ export async function createOcrWorker(onProgress: ProgressHandler): Promise<Work
     logger: (message: LoggerMessage) =>
       progressHandler(message.status, typeof message.progress === 'number' ? message.progress : 0),
   }).then((worker) => {
-    createdWorker = worker;
     if (timedOut) {
       void worker.terminate();
       throw new Error('OCR engine initialization timed out after 5 minutes. Check the connection and try again.');
@@ -59,11 +57,15 @@ export async function createOcrWorker(onProgress: ProgressHandler): Promise<Work
   const pending = (async () => {
     try {
       const worker = await Promise.race([workerPromise, workerError, timeout]);
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      try {
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      } catch (error) {
+        await worker.terminate();
+        throw error;
+      }
       cachedWorker = worker;
       return worker;
     } catch (error) {
-      if (createdWorker) await createdWorker.terminate();
       throw error;
     } finally {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
