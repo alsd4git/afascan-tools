@@ -1,52 +1,45 @@
 # AfaScan tools
 
 [![CI](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![uv](https://img.shields.io/badge/managed%20with-uv-6f42c1.svg)](https://docs.astral.sh/uv/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Web app](https://github.com/alsd4git/afascan-tools/actions/workflows/web.yml/badge.svg)](https://github.com/alsd4git/afascan-tools/actions/workflows/web.yml)
 
-Strumenti locali per trasformare gli screenshot dei referti AfaScan in dati strutturati, esportazioni tabellari e una dashboard HTML offline.
+Strumenti local-first per trasformare gli screenshot dei referti AfaScan in dati strutturati, esportazioni tabellari e una dashboard storica.
 
-![Preview della dashboard AfaScan con dati sintetici](docs/dashboard-preview.jpg)
+Sono disponibili due modalità:
 
-*La preview usa esclusivamente dati demo sintetici e non contiene referti personali.*
-
-## Cosa fa
-
-- importa gli screenshot con OCR tramite Tesseract;
-- conserva il testo OCR originale per il controllo e la correzione;
-- normalizza i dati in JSON e CSV;
-- genera una dashboard statica con grafico storico, tabella delle pesate e dettagli segmentali;
-- mostra le variazioni dal primo referto, inclusi massa grassa e massa magra dei singoli segmenti;
-- applica correzioni esplicite tramite `data/overrides.json`;
-- valida tipi, date, intervalli, segmenti e identificatori prima di scrivere gli output;
-- evita di rieseguire l’OCR sui file già importati, salvo richiesta esplicita.
+- **Web app**: nessuna installazione, OCR direttamente nel browser e archivio locale in IndexedDB;
+- **CLI**: Python + Tesseract locale, con JSON/CSV e dashboard HTML autosufficiente.
 
 Il progetto organizza le misure riportate dallo strumento e non fornisce interpretazioni o indicazioni mediche.
 
-## Avvio rapido
+![Preview della dashboard AfaScan con dati sintetici](docs/dashboard-preview.jpg)
 
-### 1. Installa i prerequisiti
+## Web app
+
+La versione canonica sarà pubblicata su:
+
+**https://alsd4git.github.io/afascan-tools/**
+
+Puoi trascinare, selezionare o incollare uno o più screenshot. Il browser calcola un hash SHA-256 locale, esegue OCR con Tesseract.js/WebAssembly, estrae lo stesso schema usato dal CLI, mostra i dati per la revisione e salva localmente il risultato.
+
+### Privacy e persistenza
+
+Gli screenshot originali **non vengono salvati** e non vengono inviati a un backend. Worker, core WASM e dati lingua di Tesseract sono copiati nella build e serviti dalla stessa GitHub Page.
+
+IndexedDB conserva soltanto:
+
+- record normalizzato corrente;
+- testo OCR grezzo, quando disponibile;
+- correzioni/override;
+- hash SHA-256 e metadati tecnici necessari a deduplicazione e migrazioni.
+
+La memoria del browser non è un backup. Dalla sezione **Import / Export** puoi scaricare `measurements.json`, `measurements.csv` o `afascan-backup.json`; il backup completo include OCR e override ma mai gli screenshot.
+
+Le preview dei branch usano namespace IndexedDB separati dalla versione canonica, così i dati di test non vengono mescolati con l'archivio principale.
+
+## CLI — avvio rapido
 
 Sono necessari [uv](https://docs.astral.sh/uv/) e [Tesseract OCR](https://github.com/tesseract-ocr/tesseract).
-
-| Sistema | uv | Tesseract |
-| --- | --- | --- |
-| macOS | `brew install uv` | `brew install tesseract` |
-| Debian/Ubuntu | [Script ufficiale](https://docs.astral.sh/uv/getting-started/installation/) | `sudo apt install tesseract-ocr` |
-| Windows PowerShell | `winget install --id=astral-sh.uv -e` | [Installer UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) |
-
-Su Debian/Ubuntu puoi usare anche questo comando per installare uv:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Su Windows, durante l’installazione di Tesseract includi la lingua inglese e aggiungi `C:\Program Files\Tesseract-OCR` al `PATH`; poi riavvia PowerShell.
-
-`uv` crea e gestisce automaticamente l’ambiente Python del progetto: non serve attivare manualmente un virtual environment.
-
-### 2. Importa gli screenshot
 
 Copia i PNG nella cartella `screenshots/`, preferibilmente con nomi come `Screenshot_YYYYMMDD-HHMMSS.png`, poi esegui:
 
@@ -56,37 +49,22 @@ uv run parse_scans.py
 
 Alla prima esecuzione vengono importati gli screenshot presenti; nelle esecuzioni successive vengono processati solo quelli nuovi.
 
-### 3. Apri la dashboard
+Apri poi `dashboard.html` direttamente nel browser. Non è necessario avviare un server web: la dashboard è un file HTML statico autosufficiente.
 
-Apri `dashboard.html` con un doppio click, oppure usa il comando del tuo sistema:
-
-```bash
-# macOS
-open dashboard.html
-
-# Linux
-xdg-open dashboard.html
-
-# Windows PowerShell
-Start-Process .\dashboard.html
-```
-
-Non è necessario avviare un server web: la dashboard è un file HTML statico autosufficiente.
-
-## Comandi
+### Comandi CLI
 
 | Comando | Uso |
 | --- | --- |
 | `uv run parse_scans.py` | Importa i nuovi screenshot ed esegue OCR solo quando serve. |
 | `uv run parse_scans.py --no-ocr` | Rigenera JSON, CSV e dashboard senza eseguire Tesseract. |
-| `uv run parse_scans.py --force-ocr` | Riesegue intenzionalmente l’OCR su tutti gli screenshot presenti. |
+| `uv run parse_scans.py --force-ocr` | Riesegue intenzionalmente l'OCR su tutti gli screenshot presenti. |
 | `uv run parse_scans.py --help` | Mostra le opzioni disponibili. |
 
 `--no-ocr` e `--force-ocr` sono alternativi.
 
-## Correggere un risultato OCR
+### Correzioni OCR nel CLI
 
-`data/measurements.json` è un output generato: non modificarlo direttamente. Inserisci invece le correzioni in `data/overrides.json`, usando il nome dello screenshot come chiave:
+`data/measurements.json` è un output generato: non modificarlo direttamente. Inserisci invece le correzioni in `data/overrides.json`, usando il nome dello screenshot come chiave, poi rilancia il parser.
 
 ```json
 {
@@ -97,19 +75,18 @@ Non è necessario avviare un server web: la dashboard è un file HTML statico au
 }
 ```
 
-Poi rilancia `uv run parse_scans.py` oppure `uv run parse_scans.py --no-ocr`. Il parser ricostruisce la base dal testo in `data/ocr/` e riapplica gli override, rendendo reversibili le correzioni quando il testo OCR originale è disponibile.
+## Dashboard condivisa
 
-Le chiavi degli override devono corrispondere a uno screenshot presente o a un referto archiviato; un nome inesistente viene segnalato come errore.
+`dashboard.template.html` rimane la sorgente della dashboard per entrambe le modalità:
 
-## Personalizzare la dashboard
+- il CLI incorpora il JSON nel template e genera `dashboard.html`;
+- la web app importa lo stesso template e gli passa i record conservati in IndexedDB.
 
-- modifica `dashboard.template.html` per cambiare layout, colori, tabelle o grafici;
-- non modificare direttamente `dashboard.html`, perché è un artefatto generato;
-- dopo le modifiche esegui `uv run parse_scans.py --no-ocr` per rigenerare l’HTML.
-
-Il JSON viene incorporato nell’HTML in un blocco dati separato; non sono richiesti database, rete o servizi esterni.
+Questo evita di mantenere due renderer indipendenti.
 
 ## Sviluppo e verifiche
+
+### Python / CLI
 
 ```bash
 uv sync --dev
@@ -117,30 +94,50 @@ uv run ruff format --check .
 uv run ruff check .
 uv run pytest -q
 uv run python -m compileall -q parse_scans.py tests
-node tests/dashboard_smoke.mjs dashboard.html empty
-node tests/dashboard_smoke.mjs dashboard.html sample
 ```
 
-La CI esegue gli stessi controlli su Linux, macOS e Windows con Python 3.10 e 3.14. Verifica anche la dashboard con archivio vuoto, valori mancanti e date duplicate.
+### Web app
+
+```bash
+cd web
+npm install
+npm run typecheck
+npm test
+npm run dev
+```
+
+`npm run dev` copia prima in `web/public/ocr/` worker, core e lingua inglese installati dai pacchetti npm. La directory è generata e non viene versionata.
+
+Durante la revisione l’app mostra lo screenshot originale a fianco dei campi; puoi aprirlo in una finestra ingrandita e usare i comandi di zoom. Sugli screenshot AfaScan con bande nere esterne, il passaggio OCR prova a ritagliare automaticamente solo l’area del referto; se il rilevamento non è abbastanza netto usa l’immagine originale.
+
+Le fixture in `tests/fixtures/` sono condivise tra Python e TypeScript e mantengono allineato il comportamento dei due parser.
+
+## GitHub Pages e preview dei branch
+
+Il workflow `.github/workflows/web.yml` valida build e test sulle PR. Un push su un branch del repository pubblica inoltre una preview stabile sotto una directory derivata dal nome del branch, ad esempio:
+
+```text
+feat/web-app
+→ https://alsd4git.github.io/afascan-tools/feat-web-app/
+```
+
+`main` aggiorna anche la root canonica `/afascan-tools/`. Il workflow conserva le build dei branch in uno stato `gh-pages` interno e pubblica il risultato tramite **GitHub Actions Pages**; le PR provenienti da fork non ricevono permessi di pubblicazione.
+
+Per il primo deploy è necessario configurare una sola volta **Settings → Pages → Source → GitHub Actions**.
 
 ## Struttura
 
 ```text
-parse_scans.py              # importazione OCR e generazione output
-dashboard.template.html     # sorgente della dashboard
-dashboard.html              # dashboard generata (locale)
-favicon.svg                 # favicon della dashboard
+parse_scans.py              # importazione OCR CLI e generazione output
+dashboard.template.html     # dashboard condivisa CLI/web
+web/                        # web app TypeScript + Vite + Tesseract.js
 docs/dashboard-preview.jpg  # preview con dati sintetici
 screenshots/                # screenshot originali (locale)
-data/
-  measurements.json         # dati normalizzati generati (locale)
-  measurements.csv          # esportazione tabellare (locale)
-  overrides.json            # correzioni OCR (locale)
-  ocr/                      # OCR grezzo (locale)
-tests/                      # test Python e smoke test JavaScript
+data/                       # OCR, measurements e override locali
+tests/                      # test e fixture condivise
 ```
 
-I dati personali e gli artefatti generati sono esclusi dal repository tramite `.gitignore`.
+I dati personali e gli artefatti generati dal CLI sono esclusi dal repository tramite `.gitignore`.
 
 ## Licenza
 

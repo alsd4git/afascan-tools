@@ -274,13 +274,22 @@ def extract_record(image: Path, text: str) -> dict:
         "skeletal_muscle_mass_kg": number(
             first(
                 [
+                    r"Skeletal\s*Muscle\s*Mass\s*\(Kg\)[^\n]*?([0-9]+[.,][0-9])",
                     r"Skeletal Muscle Mass \(Kg\).*?\n.*?([0-9]+[.,][0-9])",
                     r"Skeletal Muscle Mass \(kg\).*?\n.*?([0-9]+[.,][0-9])",
                 ],
                 text,
             )
         ),
-        "bmi": number(first([r"BMI \(kg/m\??2\).*?\n.*?([0-9]+[.,][0-9])"], text)),
+        "bmi": number(
+            first(
+                [
+                    r"BMI \(kg/m\??2\).*?\n.*?([0-9]+[.,][0-9])",
+                    r"BMI\s+m\s*([0-9]+[.,][0-9])",
+                ],
+                text,
+            )
+        ),
         "body_fat_percent": number(
             first(
                 [
@@ -290,12 +299,20 @@ def extract_record(image: Path, text: str) -> dict:
                 text,
             )
         ),
-        "score": integer(first([r"AfaScan\s*\n\s*(\d{2})\s*/\s*100", r"AfaScan\s+(\d{2})\s*/\s*100"], text)),
+        "score": integer(
+            first(
+                [
+                    r"AfaScan\s*\n?\s*(\d{2})\s*(?:/\s*|\s+)100\b",
+                    r"\|\s*(\d{2})\s*(?:/\s*|\s+)100\b",
+                ],
+                text,
+            )
+        ),
         "target_weight_kg": number(first([r"Target Weight\s+([0-9]+[.,][0-9])\s*kg"], text)),
-        "basal_metabolic_rate_kcal": integer(first([r"Basal Metabolic Rate\s+(\d{3,4})"], text)),
+        "basal_metabolic_rate_kcal": integer(first([r"Basal\s*Metabolic\s*Rate\s*[:=]?\s*(\d{3,4})\b"], text)),
         "visceral_fat_level": integer(first([r"Visceral Fat Level\s+(\d{1,2})"], text)),
         "protein_percent": number(first([r"Protein Percent\s+([0-9]+[.,][0-9])%"], text)),
-        "water_percent": number(first([r"Water Percent\s+([0-9]+[.,][0-9])%"], text)),
+        "water_percent": number(first([r"Water\s*Percent\s*\)?\s*[:=]?\s*([0-9]+[.,][0-9])%"], text)),
         "segment_fat_kg": None,
         "segment_lean_kg": None,
         "ocr_status": "ocr",

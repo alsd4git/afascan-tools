@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "isolatedModules": false
+  },
+  "include": ["src/model.ts", "src/parser.ts", "src/import-export.ts", "src/ocr.ts"]
+}
