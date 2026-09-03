@@ -99,6 +99,8 @@ const numericValue = value => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 };
+const escapeHtml = value => String(value ?? '—').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+const displayDate = record => record.date || '—';
 const fmt = (n, digits=1) => {
   const value = numericValue(n);
   if (value == null) return '—';
@@ -110,7 +112,7 @@ const difference = (current, baseline) => {
 };
 function initDashboard() {
 const latest = records.at(-1), first = records[0];
-document.getElementById('subtitle').textContent = records.length ? `${records.length} referti · dal ${first.date} al ${latest.date}` : 'Nessun referto importato';
+document.getElementById('subtitle').textContent = records.length ? `${records.length} referti · dal ${displayDate(first)} al ${displayDate(latest)}` : 'Nessun referto importato';
 document.getElementById('count').textContent = `${records.length} referti`;
 const summaryFields = ['weight_kg','body_fat_percent','skeletal_muscle_mass_kg','body_fat_mass_kg'];
 document.getElementById('summary').innerHTML = summaryFields.map(key => {
@@ -129,11 +131,11 @@ function draw(key) {
   const points=records.map((r,i)=>{ const value=numericValue(r[key]); return value == null ? '' : `${x(i)},${y(value)}`; }).filter(Boolean).join(' ');
   const ticks=4; let html=''; for(let i=0;i<=ticks;i++){ const v=lo+(hi-lo)*i/ticks, yy=y(v); html += `<line class="gridline" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><text class="chart-text" x="${L-8}" y="${yy+4}" text-anchor="end">${fmt(v)}</text>`; }
   html += `<line class="axis" x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}"/><polyline class="series" points="${points}"/>`;
-  records.forEach((r,i)=>{ const value=numericValue(r[key]); if(value != null) html += `<circle class="dot" cx="${x(i)}" cy="${y(value)}" r="5"><title>${r.date}: ${fmt(value)} ${fields[key][1]}</title></circle>`; html += `<text class="chart-text" x="${x(i)}" y="${H-16}" text-anchor="middle">${r.date.slice(5)}</text>`; });
+  records.forEach((r,i)=>{ const value=numericValue(r[key]); const date = displayDate(r); if(value != null) html += `<circle class="dot" cx="${x(i)}" cy="${y(value)}" r="5"><title>${escapeHtml(date)}: ${fmt(value)} ${fields[key][1]}</title></circle>`; html += `<text class="chart-text" x="${x(i)}" y="${H-16}" text-anchor="middle">${escapeHtml(date.length >= 7 ? date.slice(5) : date)}</text>`; });
   svg.innerHTML=html; document.getElementById('chart-title').textContent = fields[key][0];
 }
 draw('weight_kg');
-document.getElementById('rows').innerHTML = records.slice().reverse().map(r => `<tr><td>${r.date}</td><td>${fmt(r.weight_kg)} kg</td><td>${fmt(r.skeletal_muscle_mass_kg)} kg</td><td>${fmt(r.body_fat_percent)}%</td><td>${fmt(r.body_fat_mass_kg)} kg</td><td>${fmt(r.bmi)}</td><td>${r.basal_metabolic_rate_kcal ?? '—'} kcal</td><td>${r.visceral_fat_level ?? '—'}</td><td>${fmt(r.water_percent)}%</td><td>${r.score ?? '—'}/100</td></tr>`).join('');
+document.getElementById('rows').innerHTML = records.slice().reverse().map(r => `<tr><td>${escapeHtml(displayDate(r))}</td><td>${fmt(r.weight_kg)} kg</td><td>${fmt(r.skeletal_muscle_mass_kg)} kg</td><td>${fmt(r.body_fat_percent)}%</td><td>${fmt(r.body_fat_mass_kg)} kg</td><td>${fmt(r.bmi)}</td><td>${fmt(r.basal_metabolic_rate_kcal, 0)} kcal</td><td>${fmt(r.visceral_fat_level, 0)}</td><td>${fmt(r.water_percent)}%</td><td>${fmt(r.score, 0)}/100</td></tr>`).join('');
 const segmentLabels = { right_arm: 'Braccio destro', left_arm: 'Braccio sinistro', trunk: 'Tronco', right_leg: 'Gamba destra', left_leg: 'Gamba sinistra' };
 const detailDate = document.getElementById('detail-date');
 const recordKey = (record, index) => record.source_file || `${record.date}|${record.report_id || index}`;
@@ -183,7 +185,7 @@ function renderDeltas(record) {
 function renderDetails() {
   const record = records.find((r, index) => recordKey(r, index) === detailDate.value) ?? latest;
   if (!record) return;
-  document.getElementById('details-date-label').textContent = `Valori riportati nel referto del ${record.date}`;
+  document.getElementById('details-date-label').textContent = `Valori riportati nel referto del ${displayDate(record)}`;
   renderDeltas(record);
   document.getElementById('details-content').innerHTML = [
     segmentTable('Massa grassa segmentale', record.segment_fat_kg, first?.segment_fat_kg, true),

@@ -3,7 +3,7 @@ import { renderDashboard } from './dashboard.js';
 import { createBackup, downloadText, parseImport, recordsToCsv } from './import-export.js';
 import { SEGMENT_NAMES, type AfaScanRecord, type StoredReport } from './model.js';
 import { applyOverrides, buildOverrides, extractRecord, tidyRecord } from './parser.js';
-import { createOcrWorker, recognize, sha256 } from './ocr.js';
+import { createOcrWorker, recognize, releaseOcrWorker, sha256 } from './ocr.js';
 import { clearReports, DATABASE_NAME, deleteReport, listReports, saveReport, saveReports } from './storage.js';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -64,8 +64,8 @@ document.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((button) => b
 const numberFields: Array<[keyof AfaScanRecord, string, string]> = [
   ['height_cm','Height','cm'],['weight_kg','Weight','kg'],['muscle_mass_kg','Muscle mass','kg'],['bone_mass_kg','Bone mass','kg'],['body_fat_mass_kg','Body fat mass','kg'],['skeletal_muscle_mass_kg','Skeletal muscle mass','kg'],['bmi','BMI',''],['body_fat_percent','Body fat','%'],['score','Score','/100'],['target_weight_kg','Target weight','kg'],['basal_metabolic_rate_kcal','Basal metabolic rate','kcal'],['visceral_fat_level','Visceral fat',''],['protein_percent','Protein','%'],['water_percent','Water','%']
 ];
-const field = (name: string, label: string, value: unknown, suffix = '', type = 'number') => `<label class="field"><span>${label}${suffix ? ` <small>${suffix}</small>` : ''}</span><input name="${name}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${value ?? ''}"></label>`;
-const escapeHtml = (value: string): string => { const div = document.createElement('div'); div.textContent = value; return div.innerHTML; };
+const escapeHtml = (value: unknown): string => { const div = document.createElement('div'); div.textContent = String(value ?? ''); return div.innerHTML; };
+const field = (name: string, label: string, value: unknown, suffix = '', type = 'number') => `<label class="field"><span>${label}${suffix ? ` <small>${suffix}</small>` : ''}</span><input name="${name}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${escapeHtml(value)}"></label>`;
 
 function renderReview(item: ReviewItem): void {
   active = item;
@@ -162,6 +162,7 @@ async function processFiles(files: File[]): Promise<void> {
   let current = '';
   let worker: Awaited<ReturnType<typeof createOcrWorker>> | null = null;
   let added = 0; let skipped = 0;
+  let failed = false;
 
   ocrName.textContent = 'Preparing OCR engine';
   ocrLabel.textContent = 'Loading local OCR resources…';
@@ -184,14 +185,16 @@ async function processFiles(files: File[]): Promise<void> {
       queue.push({ mode: 'new', hash, text, base: record }); added += 1;
     }
   } catch (error) {
+    failed = true;
     message(error instanceof Error ? error.message : 'OCR failed', true);
   } finally {
-    if (worker) await worker.terminate();
     ocrBox.hidden = true;
   }
   if (!active) { const next = queue.shift(); if (next) renderReview(next); }
-  if (added || skipped) message(`${added} report${added === 1 ? '' : 's'} ready for review${skipped ? ` · ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''}.`);
+  if (!failed && (added || skipped)) message(`${added} report${added === 1 ? '' : 's'} ready for review${skipped ? ` · ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped` : ''}.`);
 }
+
+window.addEventListener('pagehide', () => { void releaseOcrWorker(); });
 
 const fileInput = $<HTMLInputElement>('#files');
 $('#choose').addEventListener('click', () => fileInput.click());

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { extractRecord, tidyRecord } from '../.test-dist/src/parser.js';
-import { recordsToCsv } from '../.test-dist/src/import-export.js';
+import { parseImport, recordsToCsv } from '../.test-dist/src/import-export.js';
 
 const cases = [['standard-report','Screenshot_20260830-101500.png'],['noisy-report','Screenshot_20260831-113000.png'],['incomplete-report','Screenshot_20260901-090000.png']];
 for (const [fixture, sourceFile] of cases) test(`parser parity fixture: ${fixture}`, () => {
@@ -21,4 +21,8 @@ test('CSV export includes segment columns', () => {
   const csv = recordsToCsv([record]);
   assert.match(csv,/segment_fat_right_arm_kg/);
   assert.match(csv,/Screenshot_20260901-090000\.png/);
+});
+test('JSON import rejects malformed records before persistence', () => {
+  const malicious = [{ source_file: 'test.png', date: '<img src=x onerror=alert(1)>' }];
+  assert.throws(() => parseImport(JSON.stringify(malicious)), /Not a compatible/);
 });
