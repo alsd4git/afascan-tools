@@ -8,5 +8,5 @@
     "moduleResolution": "NodeNext",
     "isolatedModules": false
   },
-  "include": ["src/model.ts", "src/parser.ts", "src/import-export.ts"]
+  "include": ["src/model.ts", "src/parser.ts", "src/import-export.ts", "src/ocr.ts"]
 }
