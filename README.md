@@ -108,6 +108,8 @@ npm run dev
 
 `npm run dev` copia prima in `web/public/ocr/` worker, core e lingua inglese installati dai pacchetti npm. La directory è generata e non viene versionata.
 
+Durante la revisione l’app mostra lo screenshot originale a fianco dei campi; puoi aprirlo in una finestra ingrandita e usare i comandi di zoom. Sugli screenshot AfaScan con bande nere esterne, il passaggio OCR prova a ritagliare automaticamente solo l’area del referto; se il rilevamento non è abbastanza netto usa l’immagine originale.
+
 Le fixture in `tests/fixtures/` sono condivise tra Python e TypeScript e mantengono allineato il comportamento dei due parser.
 
 ## GitHub Pages e preview dei branch
