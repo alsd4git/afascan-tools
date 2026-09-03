@@ -55,6 +55,7 @@ Water Percent) = 51.0%
 Body Composition Analysis | AfaScan
 100% 72.7% 3.7% 23.6% | 68 100
 Skeletal Muscle Mass (kg) 70 100 37.6
+BMI m 26.3
 """
 
     record = extract_record(Path("Screenshot_20260612-173147.png"), text)
@@ -63,6 +64,7 @@ Skeletal Muscle Mass (kg) 70 100 37.6
     assert record["water_percent"] == 51.0
     assert record["score"] == 68
     assert record["skeletal_muscle_mass_kg"] == 37.6
+    assert record["bmi"] == 26.3
 
 
 def test_body_composition_without_segment_overrides_requires_review():

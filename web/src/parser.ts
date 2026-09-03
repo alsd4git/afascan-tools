@@ -39,7 +39,7 @@ export function extractRecord(sourceFile: string, text: string): AfaScanRecord {
     bone_mass_kg: numberValue(first([/Weight\s*=.*?\n\s*[0-9]+[.,][0-9]\s*kg\s+[0-9]+[.,][0-9]\s*kg\s+([0-9]+[.,][0-9])\s*kg/im], text)),
     body_fat_mass_kg: numberValue(first([/Weight\s*=.*?\n\s*(?:[0-9]+[.,][0-9]\s*kg\s+){3}([0-9]+[.,][0-9])\s*kg/im], text)),
     skeletal_muscle_mass_kg: numberValue(first([/Skeletal\s*Muscle\s*Mass\s*\(Kg\)[^\n]*?([0-9]+[.,][0-9])/im, /Skeletal Muscle Mass \(Kg\).*?\n.*?([0-9]+[.,][0-9])/im, /Skeletal Muscle Mass \(kg\).*?\n.*?([0-9]+[.,][0-9])/im], text)),
-    bmi: numberValue(first([/BMI \(kg\/m\??2\).*?\n.*?([0-9]+[.,][0-9])/im], text)),
+    bmi: numberValue(first([/BMI \(kg\/m\??2\).*?\n.*?([0-9]+[.,][0-9])/im, /BMI\s+m\s*([0-9]+[.,][0-9])/im], text)),
     body_fat_percent: numberValue(first([/Body Fat Percent \(%\).*?\n.*?([0-9]+[.,][0-9])/im, /Body Fat Percent \(%\)\s+([0-9]+[.,][0-9])/im], text)),
     score: integerValue(first([/AfaScan\s*\n?\s*(\d{2})\s*(?:\/\s*|\s+)100\b/im, /\|\s*(\d{2})\s*(?:\/\s*|\s+)100\b/im], text)),
     target_weight_kg: numberValue(first([/Target Weight\s+([0-9]+[.,][0-9])\s*kg/im], text)),

@@ -281,7 +281,15 @@ def extract_record(image: Path, text: str) -> dict:
                 text,
             )
         ),
-        "bmi": number(first([r"BMI \(kg/m\??2\).*?\n.*?([0-9]+[.,][0-9])"], text)),
+        "bmi": number(
+            first(
+                [
+                    r"BMI \(kg/m\??2\).*?\n.*?([0-9]+[.,][0-9])",
+                    r"BMI\s+m\s*([0-9]+[.,][0-9])",
+                ],
+                text,
+            )
+        ),
         "body_fat_percent": number(
             first(
                 [
