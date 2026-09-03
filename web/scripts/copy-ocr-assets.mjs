@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,11 +15,18 @@ await mkdir(join(output, 'lang'), { recursive: true });
 await mkdir(join(webRoot, 'public'), { recursive: true });
 await cp(join(webRoot, '..', 'favicon.svg'), join(webRoot, 'public', 'favicon.svg'));
 await cp(join(packageRoot('tesseract.js'), 'dist', 'worker.min.js'), join(output, 'worker.min.js'));
+await cp(join(webRoot, 'static', 'ocr-core-loader.js'), join(output, 'core-loader.js'));
+
 const coreDir = packageRoot('tesseract.js-core');
-for (const name of await readdir(coreDir)) {
-  if (!name.startsWith('tesseract-core')) continue;
-  const source = join(coreDir, name);
-  if ((await stat(source)).isFile()) await cp(source, join(output, 'core', name));
+const variants = [
+  'tesseract-core-lstm',
+  'tesseract-core-simd-lstm',
+  'tesseract-core-relaxedsimd-lstm',
+];
+for (const variant of variants) {
+  await cp(join(coreDir, `${variant}.js`), join(output, 'core', `${variant}.js`));
+  await cp(join(coreDir, `${variant}.wasm`), join(output, 'core', `${variant}.wasm`));
 }
+
 await cp(join(packageRoot('@tesseract.js-data/eng'), '4.0.0_best_int', 'eng.traineddata.gz'), join(output, 'lang', 'eng.traineddata.gz'));
 console.log(`Copied self-hosted OCR assets to ${output}`);
