@@ -15,13 +15,13 @@ app.innerHTML = `
 <main>
 <div id="notice" class="notice" hidden></div>
 <section id="tab-import" class="tab active">
-  <div class="privacy"><strong>Your reports stay on this device.</strong><span>OCR runs locally with self-hosted Tesseract.js assets. Original screenshots are released after processing.</span></div>
+  <div class="privacy"><strong>Your reports stay on this device.</strong><span>OCR runs locally with self-hosted Tesseract.js assets. Original screenshots are released after processing.</span><span class="precision-note"><strong>Need maximum precision?</strong> For ambiguous values, the offline CLI can be more reliable because it uses native PC Tesseract and extra image-processing options. It uses the same language data, so manual review is still recommended.</span></div>
   <div id="drop" class="drop" tabindex="0"><strong>Drop AfaScan screenshots here</strong><span>or choose PNG/JPEG/WebP files · clipboard paste is supported</span><button id="choose">Choose screenshots</button><input id="files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden /></div>
   <div id="ocr" class="card" hidden><div class="status"><strong id="ocr-name"></strong><span id="ocr-label"></span></div><p id="ocr-hint" class="ocr-hint"></p><progress id="ocr-progress" max="1"></progress></div>
   <div id="review" class="card" hidden></div>
 </section>
 <section id="tab-dashboard" class="tab"><div id="dashboard"></div></section>
-<section id="tab-reports" class="tab"><div class="heading"><div><h2>Saved reports</h2><p>Only normalized data, OCR text and overrides are persisted.</p></div></div><div id="reports"></div></section>
+<section id="tab-reports" class="tab"><div class="heading"><div><h2>Saved reports</h2><p>Only normalized data, OCR text and overrides are persisted.</p></div><button id="delete-all-reports" class="danger">Delete all</button></div><div id="reports"></div></section>
 <section id="tab-data" class="tab"><div class="cards">
   <article class="card"><h2>Export</h2><p>Back up the archive or export CLI-compatible data.</p><div class="stack"><button id="export-json">Export measurements.json</button><button id="export-csv">Export measurements.csv</button><button id="export-backup">Export full backup</button></div></article>
   <article class="card"><h2>Import</h2><p>Import a web backup or CLI measurements.json.</p><button id="import-json">Choose JSON file</button><input id="import-file" type="file" accept="application/json,.json" hidden /></article>
@@ -44,8 +44,9 @@ const ocrName = $('#ocr-name');
 const ocrLabel = $('#ocr-label');
 const ocrHint = $('#ocr-hint');
 const ocrProgress = $<HTMLProgressElement>('#ocr-progress');
+const deleteAllReportsButton = $<HTMLButtonElement>('#delete-all-reports');
 let reports: StoredReport[] = [];
-type ReviewItem = { mode: 'new'; hash: string; text: string; base: AfaScanRecord } | { mode: 'edit'; stored: StoredReport; base: AfaScanRecord };
+type ReviewItem = { mode: 'new'; hash: string; text: string; base: AfaScanRecord; file: File; previewUrl?: string } | { mode: 'edit'; stored: StoredReport; base: AfaScanRecord };
 let queue: ReviewItem[] = [];
 let active: ReviewItem | null = null;
 
@@ -65,14 +66,19 @@ const numberFields: Array<[keyof AfaScanRecord, string, string]> = [
   ['height_cm','Height','cm'],['weight_kg','Weight','kg'],['muscle_mass_kg','Muscle mass','kg'],['bone_mass_kg','Bone mass','kg'],['body_fat_mass_kg','Body fat mass','kg'],['skeletal_muscle_mass_kg','Skeletal muscle mass','kg'],['bmi','BMI',''],['body_fat_percent','Body fat','%'],['score','Score','/100'],['target_weight_kg','Target weight','kg'],['basal_metabolic_rate_kcal','Basal metabolic rate','kcal'],['visceral_fat_level','Visceral fat',''],['protein_percent','Protein','%'],['water_percent','Water','%']
 ];
 const escapeHtml = (value: unknown): string => { const div = document.createElement('div'); div.textContent = String(value ?? ''); return div.innerHTML; };
-const field = (name: string, label: string, value: unknown, suffix = '', type = 'number') => `<label class="field"><span>${label}${suffix ? ` <small>${suffix}</small>` : ''}</span><input name="${name}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${escapeHtml(value)}"></label>`;
+const field = (name: string, label: string, value: unknown, suffix = '', type = 'number') => {
+  const missing = value === null || value === undefined || value === '';
+  return `<label class="field${missing ? ' missing' : ''}"><span>${label}${suffix ? ` <small>${suffix}</small>` : ''}${missing ? ' <small class="missing-label">missing · verify</small>' : ''}</span><input name="${name}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${escapeHtml(value)}"></label>`;
+};
 
 function renderReview(item: ReviewItem): void {
   active = item;
   const current = item.mode === 'edit' ? applyOverrides(item.base, item.stored.overrides) : tidyRecord(item.base);
+  const previewUrl = item.mode === 'new' ? (item.previewUrl ||= URL.createObjectURL(item.file)) : null;
   const segment = (kind: 'segment_fat_kg' | 'segment_lean_kg', title: string) => `<fieldset><legend>${title}</legend><div class="grid compact">${SEGMENT_NAMES.map((name) => field(`${kind}.${name}`, name.replaceAll('_',' '), current[kind]?.[name], 'kg')).join('')}</div></fieldset>`;
-  reviewRoot.innerHTML = `<div class="heading"><div><h2>${item.mode === 'new' ? 'Review extracted data' : 'Edit saved report'}</h2><p>${escapeHtml(current.source_file)}${current.review_required ? ' · review recommended' : ''}</p></div></div>
-<form id="review-form"><div class="grid">${field('date','Report date',current.date,'','date')}${field('report_id','Report ID',current.report_id,'','text')}${field('gender','Gender',current.gender,'','text')}${numberFields.map(([key,label,suffix]) => field(String(key),label,current[key],suffix)).join('')}</div><div class="segments">${segment('segment_fat_kg','Segment fat')}${segment('segment_lean_kg','Segment lean')}</div><details><summary>Raw OCR text</summary><pre>${escapeHtml(item.mode === 'new' ? item.text : item.stored.ocr_text || 'Not available for imported CLI data.')}</pre></details><div class="review-actions"><button type="button" id="cancel" class="secondary">${item.mode === 'new' ? 'Discard' : 'Cancel'}</button><button type="submit">Save report</button></div></form>`;
+  const preview = previewUrl ? `<aside class="preview-card"><h3>Original screenshot</h3><p>Use it to verify values before saving.</p><img class="report-preview" src="${escapeHtml(previewUrl)}" alt="Original AfaScan screenshot"></aside>` : '';
+  reviewRoot.innerHTML = `<div class="review-layout">${preview}<div class="review-form-panel"><div class="heading"><div><h2>${item.mode === 'new' ? 'Review extracted data' : 'Edit saved report'}</h2><p>${escapeHtml(current.source_file)}${current.review_required ? ' · review recommended' : ''}</p></div></div>
+<form id="review-form"><div class="grid">${field('date','Report date',current.date,'','date')}${field('report_id','Report ID',current.report_id,'','text')}${field('gender','Gender',current.gender,'','text')}${numberFields.map(([key,label,suffix]) => field(String(key),label,current[key],suffix)).join('')}</div><div class="segments">${segment('segment_fat_kg','Segment fat')}${segment('segment_lean_kg','Segment lean')}</div><details><summary>Raw OCR text</summary><pre>${escapeHtml(item.mode === 'new' ? item.text : item.stored.ocr_text || 'Not available for imported CLI data.')}</pre></details><div class="review-actions"><button type="button" id="cancel" class="secondary">${item.mode === 'new' ? 'Discard' : 'Cancel'}</button><button type="submit">Save report</button></div></form></div></div>`;
   reviewRoot.hidden = false;
   $('#cancel').addEventListener('click', finishReview);
   $<HTMLFormElement>('#review-form').addEventListener('submit', (event) => { event.preventDefault(); void saveReview(new FormData(event.currentTarget as HTMLFormElement)); });
@@ -105,6 +111,7 @@ async function saveReview(form: FormData): Promise<void> {
   finishReview();
 }
 function finishReview(): void {
+  if (active?.mode === 'new' && active.previewUrl) URL.revokeObjectURL(active.previewUrl);
   active = null; reviewRoot.hidden = true; reviewRoot.replaceChildren();
   const next = queue.shift(); if (next) renderReview(next);
 }
@@ -130,6 +137,13 @@ async function removeReport(id: string): Promise<void> {
   const stored = reports.find((r) => r.id === id); if (!stored || !confirm(`Delete ${stored.source_file}?`)) return;
   await deleteReport(id); await refresh();
 }
+async function clearAllReports(): Promise<void> {
+  if (!reports.length || !confirm('Delete every saved report from this device?')) return;
+  await clearReports();
+  await refresh();
+  message('All local reports deleted.');
+}
+deleteAllReportsButton.addEventListener('click', () => void clearAllReports());
 
 const OCR_STATUS: Record<string, string> = {
   'loading tesseract core': 'Downloading OCR engine…',
@@ -182,7 +196,7 @@ async function processFiles(files: File[]): Promise<void> {
       const text = await recognize(worker, file);
       const record = tidyRecord(extractRecord(current, text));
       if (record.report_id && reports.some((r) => r.extracted_record.report_id === record.report_id)) { skipped += 1; continue; }
-      queue.push({ mode: 'new', hash, text, base: record }); added += 1;
+      queue.push({ mode: 'new', hash, text, base: record, file }); added += 1;
     }
   } catch (error) {
     failed = true;
@@ -211,5 +225,5 @@ $('#export-backup').addEventListener('click', () => downloadText('afascan-backup
 const importFile = $<HTMLInputElement>('#import-file');
 $('#import-json').addEventListener('click', () => importFile.click());
 importFile.addEventListener('change', async () => { const file = importFile.files?.[0]; if (!file) return; try { const imported = parseImport(await file.text()); await saveReports(imported); await refresh(); message(`Imported ${imported.length} report${imported.length === 1 ? '' : 's'}.`); } catch (error) { message(error instanceof Error ? error.message : 'Import failed', true); } finally { importFile.value = ''; } });
-$('#delete-all').addEventListener('click', async () => { if (!confirm('Delete every locally stored report for this deployment?')) return; await clearReports(); await refresh(); message('All local data deleted.'); });
+$('#delete-all').addEventListener('click', () => void clearAllReports());
 void refresh();
