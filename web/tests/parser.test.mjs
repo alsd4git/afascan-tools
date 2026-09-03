@@ -16,6 +16,19 @@ test('incomplete report is marked for review', () => {
   const text = readFileSync(resolve('..','tests','fixtures','incomplete-report.txt'),'utf8');
   assert.equal(tidyRecord(extractRecord('Screenshot_20260901-090000.png',text)).review_required,true);
 });
+test('parser tolerates common OCR label separators', () => {
+  const text = `Body Composition Analysis
+BasalMetabolicRate 1693
+Water Percent) = 51.0%
+Body Composition Analysis | AfaScan
+100% 72.7% 3.7% 23.6% | 68 100
+Skeletal Muscle Mass (kg) 70 100 37.6`;
+  const record = extractRecord('Screenshot_20260612-173147.png', text);
+  assert.equal(record.basal_metabolic_rate_kcal, 1693);
+  assert.equal(record.water_percent, 51);
+  assert.equal(record.score, 68);
+  assert.equal(record.skeletal_muscle_mass_kg, 37.6);
+});
 test('CSV export includes segment columns', () => {
   const record = tidyRecord(extractRecord('Screenshot_20260901-090000.png','Body Composition Analysis\nWeight (kg) 81.2'));
   const csv = recordsToCsv([record]);
