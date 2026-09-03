@@ -15,7 +15,7 @@ app.innerHTML = `
 <main>
 <div id="notice" class="notice" hidden></div>
 <section id="tab-import" class="tab active">
-  <div class="privacy"><strong>I tuoi referti restano su questo dispositivo.</strong><span>L'OCR viene eseguito localmente con risorse Tesseract.js servite dalla stessa pagina. Lo screenshot originale resta disponibile solo durante la revisione.</span><span class="precision-note"><strong>Serve la massima precisione?</strong> Per i valori ambigui, il CLI offline può risultare più affidabile perché usa Tesseract nativo sul PC e consente preprocessing aggiuntivo. Usa gli stessi dati linguistici: la revisione manuale resta consigliata.</span></div>
+  <div class="privacy"><strong>I tuoi referti restano su questo dispositivo.</strong><span>L'OCR viene eseguito localmente con risorse Tesseract.js servite dalla stessa pagina. Lo screenshot originale resta disponibile solo durante la revisione.</span><span class="precision-note"><strong>Serve la massima precisione?</strong> Per i valori ambigui, il CLI offline può risultare più affidabile perché usa Tesseract nativo sul PC e consente preprocessing aggiuntivo. Usa gli stessi dati linguistici: la revisione manuale resta consigliata. Le bande nere esterne degli screenshot standard vengono ignorate automaticamente quando riconosciute.</span></div>
   <div id="drop" class="drop" tabindex="0"><strong>Trascina qui gli screenshot AfaScan</strong><span>oppure scegli file PNG/JPEG/WebP · puoi anche incollarli dagli appunti</span><button id="choose">Scegli screenshot</button><input id="files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden /></div>
   <div id="ocr" class="card" hidden><div class="status"><strong id="ocr-name"></strong><span id="ocr-label"></span></div><p id="ocr-hint" class="ocr-hint"></p><progress id="ocr-progress" max="1"></progress></div>
   <div id="review" class="card" hidden></div>
@@ -76,11 +76,21 @@ function renderReview(item: ReviewItem): void {
   const current = item.mode === 'edit' ? applyOverrides(item.base, item.stored.overrides) : tidyRecord(item.base);
   const previewUrl = item.mode === 'new' ? (item.previewUrl ||= URL.createObjectURL(item.file)) : null;
   const segment = (kind: 'segment_fat_kg' | 'segment_lean_kg', title: string) => `<fieldset><legend>${title}</legend><div class="grid compact">${SEGMENT_NAMES.map((name) => field(`${kind}.${name}`, name.replaceAll('_',' '), current[kind]?.[name], 'kg')).join('')}</div></fieldset>`;
-  const preview = previewUrl ? `<aside class="preview-card"><h3>Screenshot originale</h3><p>Usalo per verificare i valori prima di salvare.</p><img class="report-preview" src="${escapeHtml(previewUrl)}" alt="Screenshot originale AfaScan"></aside>` : '';
+  const preview = previewUrl ? `<aside class="preview-card"><h3>Screenshot originale</h3><p>Usalo per verificare i valori prima di salvare.</p><button type="button" class="preview-trigger" id="open-preview"><img class="report-preview" src="${escapeHtml(previewUrl)}" alt="Screenshot originale AfaScan"><span>Apri ingrandito</span></button><dialog class="preview-dialog" id="preview-dialog"><div class="preview-dialog-content"><div class="preview-dialog-toolbar"><strong>Screenshot originale</strong><div><button type="button" class="secondary" data-zoom="-1" aria-label="Riduci zoom">−</button><button type="button" class="secondary" data-zoom="0">100%</button><button type="button" class="secondary" data-zoom="1" aria-label="Aumenta zoom">+</button><button type="button" class="secondary" id="close-preview">Chiudi</button></div></div><div class="preview-dialog-viewport"><img class="preview-dialog-image" src="${escapeHtml(previewUrl)}" alt="Screenshot originale AfaScan ingrandito"></div></div></dialog></aside>` : '';
   reviewRoot.innerHTML = `<div class="review-layout">${preview}<div class="review-form-panel"><div class="heading"><div><h2>${item.mode === 'new' ? 'Verifica dati estratti' : 'Modifica referto salvato'}</h2><p>${escapeHtml(current.source_file)}${current.review_required ? ' · revisione consigliata' : ''}</p></div></div>
 <form id="review-form"><div class="grid">${field('date','Data referto',current.date,'','date')}${field('report_id','ID referto',current.report_id,'','text')}${field('gender','Sesso',current.gender,'','text')}${numberFields.map(([key,label,suffix]) => field(String(key),label,current[key],suffix)).join('')}</div><div class="segments">${segment('segment_fat_kg','Massa grassa segmentale')}${segment('segment_lean_kg','Massa magra segmentale')}</div><details><summary>Testo OCR grezzo (inglese)</summary><pre>${escapeHtml(item.mode === 'new' ? item.text : item.stored.ocr_text || 'Non disponibile per dati importati dal CLI.')}</pre></details><div class="review-actions"><button type="button" id="cancel" class="secondary">${item.mode === 'new' ? 'Scarta' : 'Annulla'}</button><button type="submit">Salva referto</button></div></form></div></div>`;
   reviewRoot.hidden = false;
   $('#cancel').addEventListener('click', finishReview);
+  if (previewUrl) {
+    const previewDialog = $<HTMLDialogElement>('#preview-dialog');
+    const previewImage = $<HTMLImageElement>('.preview-dialog-image');
+    let zoom = 1;
+    const updateZoom = (): void => { previewImage.style.transform = `scale(${zoom})`; previewDialog.querySelector<HTMLButtonElement>('[data-zoom="0"]')!.textContent = `${Math.round(zoom * 100)}%`; };
+    $('#open-preview').addEventListener('click', () => { zoom = 1; updateZoom(); previewDialog.showModal(); });
+    $('#close-preview').addEventListener('click', () => previewDialog.close());
+    previewDialog.querySelectorAll<HTMLButtonElement>('[data-zoom]').forEach((button) => button.addEventListener('click', () => { const delta = Number(button.dataset.zoom); zoom = delta === 0 ? 1 : Math.min(3, Math.max(1, zoom + delta * 0.5)); updateZoom(); }));
+    previewDialog.addEventListener('click', (event) => { if (event.target === previewDialog) previewDialog.close(); });
+  }
   $<HTMLFormElement>('#review-form').addEventListener('submit', (event) => { event.preventDefault(); void saveReview(new FormData(event.currentTarget as HTMLFormElement)); });
 }
 function formNumber(form: FormData, name: string): number | null {
