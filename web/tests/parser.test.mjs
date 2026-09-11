@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { extractRecord, tidyRecord } from '../.test-dist/src/parser.js';
+import { extractOcrRecord, extractRecord, tidyRecord } from '../.test-dist/src/parser.js';
 import { parseImport, recordsToCsv } from '../.test-dist/src/import-export.js';
 
 const cases = [['standard-report','Screenshot_20260830-101500.png'],['noisy-report','Screenshot_20260831-113000.png'],['incomplete-report','Screenshot_20260901-090000.png']];
@@ -31,6 +31,23 @@ BMI m 26.3`;
   assert.equal(record.skeletal_muscle_mass_kg, 37.6);
   assert.equal(record.bmi, 26.3);
 });
+test('profile header supports different heights, ages and genders', () => {
+  const record = extractRecord('Screenshot_20260910-101500.png', '20260910101500 164 47 Female 2026-09-10 10:15:00');
+  assert.equal(record.height_cm, 164);
+  assert.equal(record.gender, 'Female');
+});
+test('supplementary OCR only fills values missing from primary OCR', () => {
+  const primary = `Body Composition Analysis
+BMI (kg/m2)
+26.3
+Water Percent`;
+  const supplementary = `BMI (kg/m2)
+99.9
+Water Percent 51.0%`;
+  const record = extractOcrRecord('Screenshot_20260910-101500.png', primary, [supplementary]);
+  assert.equal(record.bmi, 26.3);
+  assert.equal(record.water_percent, 51);
+});
 test('CSV export includes segment columns', () => {
   const record = tidyRecord(extractRecord('Screenshot_20260901-090000.png','Body Composition Analysis\nWeight (kg) 81.2'));
   const csv = recordsToCsv([record]);
@@ -40,4 +57,29 @@ test('CSV export includes segment columns', () => {
 test('JSON import rejects malformed records before persistence', () => {
   const malicious = [{ source_file: 'test.png', date: '<img src=x onerror=alert(1)>' }];
   assert.throws(() => parseImport(JSON.stringify(malicious)), /Not a compatible/);
+});
+test('backup import rejects unknown override fields', () => {
+  const record = tidyRecord(extractRecord('Screenshot_20260910-101500.png', 'Body Composition Analysis'));
+  const backup = {
+    format: 'afascan-tools-backup', version: 1, exported_at: new Date().toISOString(), reports: [{
+      id: 'untrusted-id', source_file: record.source_file, source_sha256: null,
+      imported_at: new Date().toISOString(), ocr_text: null, extracted_record: record,
+      overrides: { source_file: 'other.png' }, review_required: Boolean(record.review_required),
+      schema_version: 1, parser_version: 1,
+    }],
+  };
+  assert.throws(() => parseImport(JSON.stringify(backup)), /Unsupported AfaScan backup/);
+});
+test('backup import regenerates internal ids', () => {
+  const record = tidyRecord(extractRecord('Screenshot_20260910-101500.png', 'Body Composition Analysis'));
+  const backup = {
+    format: 'afascan-tools-backup', version: 1, exported_at: new Date().toISOString(), reports: [{
+      id: 'untrusted-id', source_file: record.source_file, source_sha256: null,
+      imported_at: new Date().toISOString(), ocr_text: null, extracted_record: record,
+      overrides: {}, review_required: Boolean(record.review_required), schema_version: 1, parser_version: 1,
+    }],
+  };
+  const [imported] = parseImport(JSON.stringify(backup));
+  assert.notEqual(imported.id, 'untrusted-id');
+  assert.match(imported.id, /^[0-9a-f-]{36}$/i);
 });

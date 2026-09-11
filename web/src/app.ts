@@ -2,8 +2,8 @@ import './style.css';
 import { renderDashboard } from './dashboard.js';
 import { createBackup, downloadText, parseImport, recordsToCsv } from './import-export.js';
 import { SEGMENT_NAMES, type AfaScanRecord, type StoredReport } from './model.js';
-import { applyOverrides, buildOverrides, extractRecord, tidyRecord } from './parser.js';
-import { createOcrWorker, prepareOcrImage, recognize, releaseOcrWorker, sha256 } from './ocr.js';
+import { applyOverrides, buildOverrides, extractOcrRecord, tidyRecord } from './parser.js';
+import { createOcrWorker, deserializeOcrText, prepareOcrImage, recognize, releaseOcrWorker, serializeOcrText, sha256 } from './ocr.js';
 import { clearReports, DATABASE_NAME, deleteReport, listReports, saveReport, saveReports } from './storage.js';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -15,7 +15,7 @@ app.innerHTML = `
 <main>
 <div id="notice" class="notice" hidden></div>
 <section id="tab-import" class="tab active">
-  <div class="privacy"><strong>I tuoi referti restano su questo dispositivo.</strong><span>L'OCR viene eseguito localmente con risorse Tesseract.js servite dalla stessa pagina. Lo screenshot originale resta disponibile solo durante la revisione.</span><span class="precision-note"><strong>Serve la massima precisione?</strong> Per i valori ambigui, il CLI offline può risultare più affidabile perché usa Tesseract nativo sul PC e consente preprocessing aggiuntivo. Usa gli stessi dati linguistici: la revisione manuale resta consigliata. Le bande nere esterne degli screenshot standard vengono ignorate automaticamente quando riconosciute.</span></div>
+  <div class="privacy"><strong>I tuoi referti restano su questo dispositivo.</strong><span>L'OCR viene eseguito localmente con risorse Tesseract.js servite dalla stessa pagina. Lo screenshot originale resta disponibile solo durante la revisione.</span><span class="precision-note"><strong>Controlla sempre i valori estratti.</strong> Browser e CLI usano motori/configurazioni OCR differenti e possono produrre risultati leggermente diversi. La web app prova anche crop e passaggi mirati sulle aree più difficili; il CLI resta utile per elaborazioni offline e verifiche manuali. Le bande nere esterne degli screenshot standard vengono ignorate automaticamente quando riconosciute.</span></div>
   <div id="drop" class="drop" tabindex="0"><strong>Trascina qui gli screenshot AfaScan</strong><span>oppure scegli file PNG/JPEG/WebP · puoi anche incollarli dagli appunti</span><button id="choose">Scegli screenshot</button><input id="files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden /></div>
   <div id="ocr" class="card" hidden><div class="status"><strong id="ocr-name"></strong><span id="ocr-label"></span></div><p id="ocr-hint" class="ocr-hint"></p><progress id="ocr-progress" max="1"></progress></div>
   <div id="review" class="card" hidden></div>
@@ -49,6 +49,7 @@ let reports: StoredReport[] = [];
 type ReviewItem = { mode: 'new'; hash: string; text: string; base: AfaScanRecord; file: Blob | File; cropped: boolean; previewUrl?: string } | { mode: 'edit'; stored: StoredReport; base: AfaScanRecord };
 let queue: ReviewItem[] = [];
 let active: ReviewItem | null = null;
+let processing = false;
 
 function message(text: string, error = false): void {
   notice.textContent = text;
@@ -136,13 +137,14 @@ async function refresh(): Promise<void> {
 }
 function renderReports(): void {
   if (!reports.length) { reportsRoot.innerHTML = '<div class="empty">Nessun referto salvato.</div>'; return; }
-  reportsRoot.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Origine</th><th>Peso</th><th>Grasso corporeo</th><th>Stato</th><th></th></tr></thead><tbody>${reports.slice().reverse().map((r) => `<tr><td>${r.extracted_record.date ?? '—'}</td><td>${escapeHtml(r.source_file)}</td><td>${r.extracted_record.weight_kg ?? '—'} kg</td><td>${r.extracted_record.body_fat_percent ?? '—'}%</td><td>${r.review_required ? '<span class="warning">Da verificare</span>' : 'Pronto'}</td><td class="actions"><button data-edit="${r.id}" class="secondary">Modifica</button><button data-delete="${r.id}" class="danger ghost">Elimina</button></td></tr>`).join('')}</tbody></table></div>`;
+  reportsRoot.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Origine</th><th>Peso</th><th>Grasso corporeo</th><th>Stato</th><th></th></tr></thead><tbody>${reports.slice().reverse().map((r) => `<tr><td>${escapeHtml(r.extracted_record.date ?? '—')}</td><td>${escapeHtml(r.source_file)}</td><td>${r.extracted_record.weight_kg ?? '—'} kg</td><td>${r.extracted_record.body_fat_percent ?? '—'}%</td><td>${r.review_required ? '<span class="warning">Da verificare</span>' : 'Pronto'}</td><td class="actions"><button data-edit="${escapeHtml(r.id)}" class="secondary">Modifica</button><button data-delete="${escapeHtml(r.id)}" class="danger ghost">Elimina</button></td></tr>`).join('')}</tbody></table></div>`;
   reportsRoot.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((button) => button.addEventListener('click', () => editReport(button.dataset.edit || '')));
   reportsRoot.querySelectorAll<HTMLButtonElement>('[data-delete]').forEach((button) => button.addEventListener('click', () => void removeReport(button.dataset.delete || '')));
 }
 function editReport(id: string): void {
   const stored = reports.find((r) => r.id === id); if (!stored) return;
-  const base = stored.ocr_text ? extractRecord(stored.source_file, stored.ocr_text) : stored.extracted_record;
+  const raw = stored.ocr_text ? deserializeOcrText(stored.ocr_text) : null;
+  const base = raw ? extractOcrRecord(stored.source_file, raw.primary, raw.supplementary) : stored.extracted_record;
   tab('import'); renderReview({ mode: 'edit', stored, base });
 }
 async function removeReport(id: string): Promise<void> {
@@ -184,6 +186,15 @@ function updateOcrStatus(status: string, progress: number, current: string): voi
 
 async function processFiles(files: File[]): Promise<void> {
   const images = files.filter((file) => file.type.startsWith('image/')); if (!images.length) return;
+  if (processing) {
+    message('Un’elaborazione OCR è già in corso. Attendi che termini prima di aggiungere altri screenshot.');
+    return;
+  }
+  processing = true;
+  const chooseButton = $<HTMLButtonElement>('#choose');
+  const dropArea = $('#drop');
+  chooseButton.disabled = true;
+  dropArea.setAttribute('aria-busy', 'true');
   ocrBox.hidden = false;
   let current = '';
   let worker: Awaited<ReturnType<typeof createOcrWorker>> | null = null;
@@ -206,8 +217,9 @@ async function processFiles(files: File[]): Promise<void> {
       const hash = await sha256(file);
       if (reports.some((r) => r.source_sha256 === hash)) { skipped += 1; continue; }
       const prepared = await prepareOcrImage(file);
-      const text = await recognize(worker, file, prepared);
-      const record = tidyRecord(extractRecord(current, text));
+      const ocr = await recognize(worker, file, prepared);
+      const text = serializeOcrText(ocr);
+      const record = tidyRecord(extractOcrRecord(current, ocr.primary, ocr.supplementary));
       if (record.report_id && reports.some((r) => r.extracted_record.report_id === record.report_id)) { skipped += 1; continue; }
       queue.push({ mode: 'new', hash, text, base: record, file: prepared.source, cropped: prepared.cropped }); added += 1;
     }
@@ -215,6 +227,9 @@ async function processFiles(files: File[]): Promise<void> {
     failed = true;
     message(error instanceof Error ? error.message : 'OCR non riuscito', true);
   } finally {
+    processing = false;
+    chooseButton.disabled = false;
+    dropArea.removeAttribute('aria-busy');
     ocrBox.hidden = true;
   }
   if (!active) { const next = queue.shift(); if (next) renderReview(next); }
@@ -227,7 +242,7 @@ const fileInput = $<HTMLInputElement>('#files');
 $('#choose').addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => { void processFiles(Array.from(fileInput.files || [])); fileInput.value = ''; });
 const drop = $('#drop');
-drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('dragging'); });
+drop.addEventListener('dragover', (event) => { event.preventDefault(); if (!processing) drop.classList.add('dragging'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('dragging'));
 drop.addEventListener('drop', (event) => { event.preventDefault(); drop.classList.remove('dragging'); void processFiles(Array.from(event.dataTransfer?.files || [])); });
 document.addEventListener('paste', (event) => { const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith('image/')); if (files.length) { tab('import'); void processFiles(files); } });

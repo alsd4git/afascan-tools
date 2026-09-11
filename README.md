@@ -22,6 +22,8 @@ La versione canonica sarà pubblicata su:
 
 Puoi trascinare, selezionare o incollare uno o più screenshot. Il browser calcola un hash SHA-256 locale, esegue OCR con Tesseract.js/WebAssembly, estrae lo stesso schema usato dal CLI, mostra i dati per la revisione e salva localmente il risultato.
 
+Web app e CLI usano motori/configurazioni OCR differenti e possono produrre testo leggermente diverso; il parser normalizzato rimane allineato tramite fixture condivise e la revisione manuale dei valori resta consigliata.
+
 ### Privacy e persistenza
 
 Gli screenshot originali **non vengono salvati** e non vengono inviati a un backend. Worker, core WASM e dati lingua di Tesseract sono copiati nella build e serviti dalla stessa GitHub Page.
@@ -100,7 +102,7 @@ uv run python -m compileall -q parse_scans.py tests
 
 ```bash
 cd web
-npm install
+npm ci
 npm run typecheck
 npm test
 npm run dev

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { detectReportCrop } from '../.test-dist/src/ocr.js';
+import { deserializeOcrText, detectReportCrop, serializeOcrText } from '../.test-dist/src/ocr.js';
 
 function image(width, height, top, bottom) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -22,4 +22,13 @@ test('detects large dark bands around a report', () => {
 
 test('does not crop an image without meaningful outer bands', () => {
   assert.equal(detectReportCrop(image(100, 100, 4, 96), 100, 100), null);
+});
+
+test('serializes and restores primary and supplementary OCR separately', () => {
+  const original = { primary: 'primary text', supplementary: ['region one', 'region two'] };
+  assert.deepEqual(deserializeOcrText(serializeOcrText(original)), original);
+});
+
+test('legacy OCR text without markers remains a primary-only result', () => {
+  assert.deepEqual(deserializeOcrText('legacy OCR text'), { primary: 'legacy OCR text', supplementary: [] });
 });

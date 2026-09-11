@@ -236,6 +236,8 @@ def extract_record(image: Path, text: str) -> dict:
             dt.datetime.strptime(filename_date.group(1) + filename_date.group(2), "%Y%m%d%H%M%S").date().isoformat()
         )
 
+    profile_height = r"(?:[5-9]\d|1\d{2}|2[0-4]\d|250)"
+    profile_age = r"(?:[1-9]|[1-9]\d|1[01]\d|120)"
     record = {
         "device": "AfaScan",
         "report_type": (
@@ -244,8 +246,8 @@ def extract_record(image: Path, text: str) -> dict:
         "date": report_date,
         "source_file": image.name,
         "report_id": first([r"\b(20\d{12})\b"], text),
-        "height_cm": number(first([r"\b(17\d)\s+30\s+(?:Male|Female)"], text)),
-        "gender": first([r"\b(?:17\d)\s+30\s+(Male|Female)\b"], text),
+        "height_cm": number(first([rf"\b({profile_height})\s+{profile_age}\s+(?:Male|Female)\b"], text)),
+        "gender": first([rf"\b{profile_height}\s+{profile_age}\s+(Male|Female)\b"], text),
         "weight_kg": number(
             first(
                 [

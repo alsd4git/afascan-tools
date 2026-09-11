@@ -6,10 +6,25 @@ type ProgressHandler = (status: string, progress: number) => void;
 type Rectangle = { left: number; top: number; width: number; height: number };
 type CropBounds = { top: number; bottom: number };
 export type PreparedOcrImage = { source: Blob | File; cropped: boolean };
+export type OcrTextResult = { primary: string; supplementary: string[] };
 
 let cachedWorker: Worker | null = null;
 let initialization: Promise<Worker> | null = null;
 let progressHandler: ProgressHandler = () => undefined;
+
+const SUPPLEMENTARY_MARKER = /\n\n--- AFASCAN SUPPLEMENTARY OCR \d+ ---\n/g;
+
+export function serializeOcrText(result: OcrTextResult): string {
+  return result.supplementary.reduce(
+    (text, supplementary, index) => `${text}\n\n--- AFASCAN SUPPLEMENTARY OCR ${index + 1} ---\n${supplementary}`,
+    result.primary,
+  );
+}
+
+export function deserializeOcrText(text: string): OcrTextResult {
+  const parts = text.split(SUPPLEMENTARY_MARKER);
+  return { primary: parts[0] ?? '', supplementary: parts.slice(1) };
+}
 
 /** Find a large bright report area surrounded by dark screenshot bands. */
 export function detectReportCrop(data: Uint8ClampedArray, width: number, height: number): CropBounds | null {
@@ -135,8 +150,6 @@ export async function createOcrWorker(onProgress: ProgressHandler): Promise<Work
       }
       cachedWorker = worker;
       return worker;
-    } catch (error) {
-      throw error;
     } finally {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     }
@@ -150,24 +163,24 @@ export async function createOcrWorker(onProgress: ProgressHandler): Promise<Work
   }
 }
 
-export async function recognize(worker: Worker, file: File, prepared?: PreparedOcrImage): Promise<string> {
+export async function recognize(worker: Worker, file: File, prepared?: PreparedOcrImage): Promise<OcrTextResult> {
   const source = (prepared ?? (await prepareOcrImage(file))).source;
   const primary = (await worker.recognize(source)).data.text;
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(source);
   } catch {
-    return primary;
+    return { primary, supplementary: [] };
   }
 
   // AfaScan reports are tall screenshots with two columns. The full-page
-  // single-block pass is best for the header and composition values, while
-  // sparse text on targeted regions recovers labels such as BMI and visceral
-  // fat that otherwise get mixed with chart ticks.
+  // single-block pass is authoritative. Sparse-text passes on targeted regions
+  // are returned separately and are used only to fill fields the primary pass
+  // could not extract.
   const isReportLayout = bitmap.width >= 700 && bitmap.height / bitmap.width >= 1.2;
   if (!isReportLayout) {
     bitmap.close();
-    return primary;
+    return { primary, supplementary: [] };
   }
   const rectangles: Rectangle[] = [
     {
@@ -190,7 +203,8 @@ export async function recognize(worker: Worker, file: File, prepared?: PreparedO
       supplementary.push((await worker.recognize(source, { rectangle })).data.text);
     }
   } catch {
-    return primary;
+    // Keep any successful regional passes but never fail the authoritative
+    // full-page result because an optional fallback pass failed.
   } finally {
     try {
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
@@ -198,7 +212,7 @@ export async function recognize(worker: Worker, file: File, prepared?: PreparedO
       bitmap.close();
     }
   }
-  return `${supplementary.join('\n')}\n${primary}`;
+  return { primary, supplementary };
 }
 
 export async function releaseOcrWorker(): Promise<void> {

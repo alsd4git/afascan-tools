@@ -24,6 +24,11 @@ const filenameDate = (sourceFile: string): string | null => {
   return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
 };
 
+const PROFILE_HEIGHT = '(?:[5-9]\\d|1\\d{2}|2[0-4]\\d|250)';
+const PROFILE_AGE = '(?:[1-9]|[1-9]\\d|1[01]\\d|120)';
+const profileHeightPattern = new RegExp(`\\b(${PROFILE_HEIGHT})\\s+${PROFILE_AGE}\\s+(?:Male|Female)\\b`, 'im');
+const profileGenderPattern = new RegExp(`\\b${PROFILE_HEIGHT}\\s+${PROFILE_AGE}\\s+(Male|Female)\\b`, 'im');
+
 export function extractRecord(sourceFile: string, text: string): AfaScanRecord {
   const reportDate = first([/\b(20\d{2}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}/im, /\b(20\d{2}-\d{2}-\d{2})\b/im], text) ?? filenameDate(sourceFile);
   return {
@@ -32,8 +37,8 @@ export function extractRecord(sourceFile: string, text: string): AfaScanRecord {
     date: reportDate,
     source_file: sourceFile,
     report_id: first([/\b(20\d{12})\b/im], text),
-    height_cm: numberValue(first([/\b(17\d)\s+30\s+(?:Male|Female)/im], text)),
-    gender: first([/\b(?:17\d)\s+30\s+(Male|Female)\b/im], text),
+    height_cm: numberValue(first([profileHeightPattern], text)),
+    gender: first([profileGenderPattern], text),
     weight_kg: numberValue(first([/Weight\s*=.*?\n\s*([0-9]+[.,][0-9])\s*kg/im, /Weight \(kg\)\s+([0-9]+[.,][0-9])/im], text)),
     muscle_mass_kg: numberValue(first([/Weight\s*=.*?\n\s*[0-9]+[.,][0-9]\s*kg\s+([0-9]+[.,][0-9])\s*kg/im], text)),
     bone_mass_kg: numberValue(first([/Weight\s*=.*?\n\s*[0-9]+[.,][0-9]\s*kg\s+[0-9]+[.,][0-9]\s*kg\s+([0-9]+[.,][0-9])\s*kg/im], text)),
@@ -51,6 +56,31 @@ export function extractRecord(sourceFile: string, text: string): AfaScanRecord {
     segment_lean_kg: null,
     ocr_status: 'ocr',
   };
+}
+
+const FALLBACK_FIELDS: Array<keyof AfaScanRecord> = [
+  'date', 'report_id', 'height_cm', 'gender', 'weight_kg', 'muscle_mass_kg', 'bone_mass_kg',
+  'body_fat_mass_kg', 'skeletal_muscle_mass_kg', 'bmi', 'body_fat_percent', 'score',
+  'target_weight_kg', 'basal_metabolic_rate_kcal', 'visceral_fat_level', 'protein_percent', 'water_percent',
+];
+
+/**
+ * Parse the full-page OCR first, then use region OCR only to fill fields the
+ * primary pass could not extract. A conflicting supplementary value never
+ * replaces a value already found in the primary pass.
+ */
+export function extractOcrRecord(sourceFile: string, primaryText: string, supplementaryTexts: string[] = []): AfaScanRecord {
+  const merged = { ...extractRecord(sourceFile, primaryText) } as AfaScanRecord;
+  for (const text of supplementaryTexts) {
+    const fallback = extractRecord(sourceFile, text);
+    for (const key of FALLBACK_FIELDS) {
+      if (merged[key] == null && fallback[key] != null) {
+        (merged as unknown as Record<string, unknown>)[key] = fallback[key];
+      }
+    }
+    if (merged.report_type === 'unknown' && fallback.report_type !== 'unknown') merged.report_type = fallback.report_type;
+  }
+  return merged;
 }
 
 const completeSegment = (value: SegmentValues | null): boolean => value != null && SEGMENT_NAMES.every((name) => Number.isFinite(value[name]));

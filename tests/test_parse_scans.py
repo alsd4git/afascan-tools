@@ -48,6 +48,17 @@ Water Percent 51.2%
     assert record["water_percent"] == 51.2
 
 
+def test_extract_record_reads_general_profile_header():
+    text = """Body Composition Analysis
+20260910101500 164 47 Female 2026-09-10 10:15:00
+"""
+
+    record = extract_record(Path("Screenshot_20260910-101500.png"), text)
+
+    assert record["height_cm"] == 164
+    assert record["gender"] == "Female"
+
+
 def test_extract_record_tolerates_common_ocr_label_separators():
     text = """Body Composition Analysis
 BasalMetabolicRate 1693
