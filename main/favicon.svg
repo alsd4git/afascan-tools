@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title id="title">AfaScan</title>
+  <rect width="32" height="32" rx="8" fill="#191d23"/>
+  <path d="M16 6 7.5 25h4.2l1.5-3.7h5.6l1.5 3.7h4.2L16 6Zm-.1 6.2 1.8 5.2h-3.6l1.8-5.2Z" fill="#ed2e61"/>
+</svg>
