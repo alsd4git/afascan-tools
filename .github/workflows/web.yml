@@ -89,7 +89,7 @@ jobs:
           mkdir -p "pages-state/$BRANCH_DIR"
           cp -a branch-build/. "pages-state/$BRANCH_DIR/"
           if [[ "$GITHUB_REF_NAME" == "main" ]]; then
-            find pages-state -maxdepth 1 -type f ! -name '.nojekyll' -delete
+            find pages-state -maxdepth 1 -type f ! -name '.nojekyll' ! -name '.git' -delete
             rm -rf pages-state/assets pages-state/ocr
             cp -a branch-build/. pages-state/
           fi
