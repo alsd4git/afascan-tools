@@ -1,0 +1,14 @@
+Body Composition Analysis
+20260831113000 175 30 Male 2026-08-31 11:30:00
+Weight (kg) 79,4
+Skeletal Muscle Mass (Kg)
+36,9
+BMI (kg/m2)
+25,9
+Body Fat Percent (%) 22,8
+AfaScan 71 / 100
+Target Weight 72,9 kg
+Basal Metabolic Rate 1690
+Visceral Fat Level 10
+Protein Percent 14,1%
+Water Percent 52,0%
