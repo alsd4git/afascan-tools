@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/alsd4git/afascan-tools/actions/workflows/ci.yml)
 [![Web app](https://github.com/alsd4git/afascan-tools/actions/workflows/web.yml/badge.svg)](https://github.com/alsd4git/afascan-tools/actions/workflows/web.yml)
+[![Licenza: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 Strumenti local-first per trasformare gli screenshot dei referti AfaScan in dati strutturati, esportazioni tabellari e una dashboard storica.
 
@@ -16,9 +17,7 @@ Il progetto organizza le misure riportate dallo strumento e non fornisce interpr
 
 ## Web app
 
-La versione canonica sarà pubblicata su:
-
-**https://alsd4git.github.io/afascan-tools/**
+[Apri la web app](https://alsd4git.github.io/afascan-tools/). Non serve installare il CLI.
 
 Puoi trascinare, selezionare o incollare uno o più screenshot. Il browser calcola un hash SHA-256 locale, esegue OCR con Tesseract.js/WebAssembly, estrae lo stesso schema usato dal CLI, mostra i dati per la revisione e salva localmente il risultato.
 
@@ -42,6 +41,14 @@ Le preview dei branch usano namespace IndexedDB separati dalla versione canonica
 ## CLI — avvio rapido
 
 Sono necessari [uv](https://docs.astral.sh/uv/) e [Tesseract OCR](https://github.com/tesseract-ocr/tesseract).
+
+Per partire dal sorgente:
+
+```bash
+git clone https://github.com/alsd4git/afascan-tools.git
+cd afascan-tools
+uv sync --locked
+```
 
 Copia i PNG nella cartella `screenshots/`, preferibilmente con nomi come `Screenshot_YYYYMMDD-HHMMSS.png`, poi esegui:
 
@@ -91,7 +98,7 @@ Questo evita di mantenere due renderer indipendenti.
 ### Python / CLI
 
 ```bash
-uv sync --dev
+uv sync --locked --dev
 uv run ruff format --check .
 uv run ruff check .
 uv run pytest -q
@@ -125,7 +132,7 @@ feat/web-app
 
 `main` aggiorna anche la root canonica `/afascan-tools/`. Il workflow conserva le build dei branch in uno stato `gh-pages` interno e pubblica il risultato tramite **GitHub Actions Pages**; le PR provenienti da fork non ricevono permessi di pubblicazione.
 
-Per il primo deploy è necessario configurare una sola volta **Settings → Pages → Source → GitHub Actions**.
+Per pubblicare un fork, configura **Settings → Pages → Source → GitHub Actions** e adatta gli URL al tuo account.
 
 ## Struttura
 
