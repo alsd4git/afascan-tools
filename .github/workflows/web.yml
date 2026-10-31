@@ -13,14 +13,18 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Typecheck, test and build
+  test:
+    name: Typecheck and test / Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24, 26]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
@@ -32,6 +36,21 @@ jobs:
       - name: Tests
         working-directory: web
         run: npm test
+
+  build:
+    name: Build web app
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
       - name: Build
         working-directory: web
         env:
@@ -56,7 +75,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/download-artifact@v8
@@ -110,7 +129,9 @@ jobs:
           BRANCH_RAW: ${{ steps.branch.outputs.raw }}
         run: |
           PREVIEW_URL="${BASE_URL%/}/${BRANCH_DIR}/"
-          echo "### GitHub Pages" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Canonical: ${BASE_URL}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Branch preview (${BRANCH_RAW}): ${PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### GitHub Pages"
+            echo "- Canonical: ${BASE_URL}"
+            echo "- Branch preview (${BRANCH_RAW}): ${PREVIEW_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice title=Branch preview::${PREVIEW_URL}"
