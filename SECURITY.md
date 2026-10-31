@@ -8,7 +8,8 @@ Non pubblicare dettagli di exploit o dati sensibili nelle issue o nelle pull req
 Indica il commit o la versione interessata, l'impatto previsto e i passaggi minimi
 per riprodurre il problema. Usa solo esempi sintetici e materiale anonimizzato.
 Non allegare referti, dati sanitari, screenshot personali o risultati OCR reali.
-Se trovi una credenziale esposta, revocala o ruotala prima di condividere dettagli.
+Se una tua credenziale è stata esposta, revocala o ruotala. Segnala subito in
+privato le credenziali altrui, senza usarle o tentare di revocarle.
 
 ## Versioni e manutenzione
 
